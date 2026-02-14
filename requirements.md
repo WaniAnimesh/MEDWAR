@@ -8,6 +8,55 @@ The system provides three operational modes: Snapshot OODA (triggered analysis a
 
 Target deployment includes Tier-1 private hospital chains, Tier-2 multi-specialty hospitals, NABH/NABL accredited facilities, and teaching hospitals primarily in India, with strict DPDP compliance and Mumbai region data residency.
 
+## Scope
+
+### In Scope
+
+- Event-triggered and continuous semantic fracture detection across six clinical moments
+- Multi-agent adversarial analysis using AWS Bedrock Claude models
+- HL7 v2.x and FHIR R4 integration with major EHR systems
+- Real-time and retrospective threat intelligence visualization
+- Patient comprehension system with six Indian language support
+- Role-based countermeasure generation for clinical staff
+- Feedback-driven calibration and learning loops
+- DPDP-compliant data processing with Mumbai region residency
+- Multi-tenant SaaS and single-tenant private VPC deployment models
+- Progressive Web App with offline capability for nursing staff
+- NABH compliance reporting and audit trail generation
+
+### Out of Scope
+
+- Real-time clinical diagnosis or treatment recommendations
+- Autonomous prescription of medications or ordering of procedures
+- Handwriting recognition from paper charts (OCR limited to printed text and PDFs)
+- Integration with medical devices or IoT sensors
+- Billing, insurance claims, or revenue cycle management
+- Patient scheduling or appointment management
+- Telemedicine or remote consultation features
+- Clinical decision support for specific disease protocols
+- Genomic or precision medicine analysis
+- Medical imaging analysis or radiology integration
+
+### Non-Goals
+
+- Replacing clinician judgment or clinical decision-making authority
+- Achieving 100% semantic fracture detection (target: 90% recall with 20% false positive rate)
+- Supporting all Indian languages (Phase 1 limited to six major languages)
+- Real-time streaming for all patients simultaneously (prioritized by risk stratification)
+- On-device AI model inference (all AI processing via AWS Bedrock)
+- Blockchain-based audit trails (cryptographic signatures sufficient for NABH compliance)
+
+### Assumptions
+
+- Hospitals have functional EHR systems capable of HL7 or FHIR export
+- Clinical staff have smartphone or tablet access during shifts
+- Hospital network provides minimum 2 Mbps bandwidth per concurrent user
+- Hospitals can provide minimum 3 months of historical data for calibration
+- Clinical staff can dedicate 2 hours for initial training
+- Hospitals have designated Quality Improvement Lead for feedback validation
+- Patient consent for data processing is obtained per DPDP requirements
+- Hospitals maintain backup power for critical IT infrastructure
+
 ## Glossary
 
 - **MEDWAR_System**: The complete Clinical Threat Intelligence Engine including all modes, agents, and components

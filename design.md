@@ -4168,187 +4168,518 @@ async function rollback(targetVersion?: string): Promise<void> {
 
 ## Correctness Properties
 
+*A property is a characteristic or behavior that should hold true across all valid executions of a system-essentially, a formal statement about what the system should do. Properties serve as the bridge between human-readable specifications and machine-verifiable correctness guarantees.*
+
 ### System-Level Properties
 
 **Property 1: Entropy Score Bounds**
-```typescript
-// All entropy scores must be between 0.0 and 1.0
-∀ fracture ∈ SemanticFractures:
-  0.0 ≤ computeEntropyScore(fracture) ≤ 1.0
-```
+*For any* semantic fracture detected by the system, the computed entropy score must be between 0.0 and 1.0 inclusive.
+**Validates: Requirements 8.1, 8.2, 8.3, 8.4, 8.5**
 
 **Property 2: Evidence Grounding**
-```typescript
-// Every fracture shown to clinicians must have verified evidence
-∀ fracture ∈ DisplayedFractures:
-  fracture.evidence.length > 0 ∧
-  ∀ evidence ∈ fracture.evidence:
-    verifyEvidence(evidence, sourceData) = true
-```
+*For any* fracture displayed to clinicians, every fracture must have at least one piece of verified evidence that can be traced back to source data.
+**Validates: Requirements 9.1, 9.2, 9.3, 9.4, 9.5, 9.6, 9.7**
 
 **Property 3: Agent Consensus Consistency**
-```typescript
-// Consensus score must reflect actual agent agreement
-∀ fracture ∈ SemanticFractures:
-  let agreementRate = fracture.agentConsensus.supportingAgents.length / totalAgents
-  let consensusScore = fracture.agentConsensus.consensusScore
-  
-  agreementRate > 0.8 ⟹ consensusScore > 0.7
-  agreementRate < 0.3 ⟹ consensusScore < 0.4
-```
+*For any* fracture with high agent agreement (>80% supporting), the consensus score must be greater than 0.7; for fractures with low agreement (<30% supporting), the consensus score must be less than 0.4.
+**Validates: Requirements 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 6.7**
 
 **Property 4: Temporal Ordering**
-```typescript
-// Timeline events must be chronologically ordered
-∀ timeline ∈ PatientTimelines:
-  ∀ i, j where i < j:
-    timeline.events[i].timestamp ≤ timeline.events[j].timestamp
-```
+*For any* patient timeline, all events must be chronologically ordered by timestamp.
+**Validates: Requirements 4.1, 4.2, 4.3, 4.4**
 
 **Property 5: Data Isolation**
-```typescript
-// Hospital data must be isolated (no cross-tenant leakage)
-∀ hospital1, hospital2 ∈ Hospitals where hospital1 ≠ hospital2:
-  ∀ fracture ∈ getFractures(hospital1):
-    fracture.hospitalId = hospital1.id ∧
-    fracture ∉ getFractures(hospital2)
-```
+*For any* two different hospitals, no fracture from hospital A should be accessible when querying fractures for hospital B.
+**Validates: Requirements 23.1, 23.2, 23.3, 23.4, 23.5, 24.1, 24.2, 24.3**
 
 ### Component-Level Properties
 
 **Property 6: Evidence Verification Symmetry**
-```typescript
-// Fuzzy match similarity should be symmetric
-∀ text1, text2 ∈ Strings:
-  |fuzzyMatch(text1, text2) - fuzzyMatch(text2, text1)| < ε
-  where ε = 0.01
-```
+*For any* two text strings, the fuzzy match similarity score should be symmetric within a tolerance of 0.01.
+**Validates: Requirements 9.2, 9.3**
 
 **Property 7: Readability Constraint**
-```typescript
-// Patient instructions must meet readability target
-∀ instructions ∈ PatientInstructions:
-  instructions.readabilityGrade ≤ 6
-```
+*For any* patient instructions generated in any supported language, the readability grade must be 6 or lower.
+**Validates: Requirements 11.11, 11.12, 11.13**
 
 **Property 8: Medication Name Preservation**
-```typescript
-// Medication names must never be translated
-∀ instructions ∈ PatientInstructions:
-  ∀ medication ∈ instructions.medications:
-    ∀ language ∈ SupportedLanguages:
-      let translated = translate(instructions, language)
-      medication.name ∈ translated.content
-```
+*For any* patient instructions translated to any supported language, all medication names must appear unchanged in the translated version.
+**Validates: Requirements 11.1, 11.2, 11.3, 11.4, 11.5, 11.6, 11.7, 11.8, 11.9, 11.10, 36.7**
 
 **Property 9: Token Budget Enforcement**
-```typescript
-// Total token usage must not exceed budget
-∀ analysis ∈ OODAAnalyses:
-  Σ(agent.tokenUsage for agent in analysis.agents) ≤ analysis.tokenBudget
-```
+*For any* OODA analysis session, the total token usage across all agent invocations must not exceed the configured token budget.
+**Validates: Requirements 6.8, 26.6**
 
 **Property 10: Acknowledgement Idempotency**
-```typescript
-// Acknowledging a fracture multiple times should be idempotent
-∀ fracture ∈ SemanticFractures:
-  ∀ user ∈ Users:
-    let state1 = acknowledge(fracture, user)
-    let state2 = acknowledge(state1, user)
-    state1 = state2
-```
-
+*For any* fracture and user, acknowledging the same fracture multiple times should result in the same final state as acknowledging it once.
+**Validates: Requirements 30.1, 30.2, 30.11**
 
 ### Safety Properties
 
 **Property 11: No Data Loss on Failure**
-```typescript
-// System failures must not lose patient data
-∀ operation ∈ DataWriteOperations:
-  try {
-    result = operation.execute()
-    if result.success:
-      ∃ record ∈ Database: record.id = operation.id
-  } catch (error) {
-    ∃ record ∈ (Database ∪ BackupQueue): record.id = operation.id
-  }
-```
+*For any* data write operation, if the operation fails, the data must either be successfully written to the database or queued in a backup queue for retry.
+**Validates: Requirements 35.1, 35.2, 35.3, 35.4, 35.5, 35.6**
 
 **Property 12: Audit Trail Completeness**
-```typescript
-// All PHI access must be logged
-∀ access ∈ PHIAccessEvents:
-  ∃ auditLog ∈ AuditLogs:
-    auditLog.resourceId = access.resourceId ∧
-    auditLog.userId = access.userId ∧
-    auditLog.timestamp = access.timestamp
-```
+*For any* PHI access event, there must exist a corresponding audit log entry with matching resource ID, user ID, and timestamp.
+**Validates: Requirements 38.1, 38.2, 38.3, 38.4, 38.5, 38.6, 38.7, 38.12**
 
 **Property 13: Encryption Invariant**
-```typescript
-// All PHI at rest must be encrypted
-∀ data ∈ StoredData where data.containsPHI = true:
-  data.encrypted = true ∧
-  data.encryptionKey ∈ KMSKeys
-```
+*For any* stored data containing PHI, the data must be encrypted at rest using AWS KMS.
+**Validates: Requirements 24.2, 24.3, 24.4**
 
 **Property 14: Authorization Enforcement**
-```typescript
-// Users can only access data within their scope
-∀ user ∈ Users:
-  ∀ resource ∈ Resources:
-    canAccess(user, resource) ⟹
-      (resource.hospitalId ∈ user.authorizedHospitals ∧
-       resource.scope ⊆ user.scope)
-```
+*For any* user attempting to access a resource, access should only be granted if the resource's hospital ID is in the user's authorized hospitals list and the resource scope is within the user's scope.
+**Validates: Requirements 23.9, 23.10, 23.11**
 
 ### Liveness Properties
 
 **Property 15: Analysis Completion**
-```typescript
-// All queued analyses eventually complete or fail
-∀ analysis ∈ QueuedAnalyses:
-  ◇(analysis.status ∈ {COMPLETED, FAILED})
-  
-  // Eventually (◇) the analysis reaches a terminal state
-```
+*For any* queued analysis, the analysis must eventually reach either COMPLETED or FAILED status within a reasonable time bound.
+**Validates: Requirements 27.1, 27.2**
 
 **Property 16: Alert Delivery**
-```typescript
-// High-risk fractures eventually trigger notifications
-∀ fracture ∈ SemanticFractures where fracture.entropyScore > 0.7:
-  ◇(∃ notification ∈ Notifications:
-      notification.fractureId = fracture.id ∧
-      notification.status = DELIVERED)
-```
+*For any* high-risk fracture (entropy score > 0.7), a notification must eventually be delivered to the assigned clinical staff.
+**Validates: Requirements 30.1, 30.2, 30.3, 30.4, 30.5, 30.6**
 
 **Property 17: Feedback Processing**
-```typescript
-// Submitted feedback eventually updates calibration
-∀ feedback ∈ FeedbackSubmissions:
-  ◇(∃ calibrationUpdate ∈ CalibrationUpdates:
-      feedback.id ∈ calibrationUpdate.processedFeedback)
-```
+*For any* submitted feedback, the feedback must eventually be processed and incorporated into a calibration update.
+**Validates: Requirements 15.1, 15.2, 15.3, 15.4, 15.5, 15.6**
 
 ### Performance Properties
 
 **Property 18: Latency Bounds**
-```typescript
-// 95% of analyses complete within target latency
-P(analysis.executionTime ≤ 90000) ≥ 0.95
-```
+*For any* 100 snapshot OODA analyses, at least 95 of them must complete within 90 seconds.
+**Validates: Requirements 27.1, 27.2**
 
 **Property 19: Throughput Guarantee**
-```typescript
-// System handles minimum throughput per hospital
-∀ hospital ∈ Hospitals:
-  throughput(hospital, 24h) ≥ 100 analyses
-```
+*For any* hospital over a 24-hour period, the system must successfully process at least 100 snapshot analyses.
+**Validates: Requirements 27.3, 27.4**
 
 **Property 20: Cost Efficiency**
+*For any* analysis session, the average cost per analysis must not exceed $0.20.
+**Validates: Requirements 26.10**
+
+### Offline Capability Properties
+
+**Property 21: Offline Data Availability**
+*For any* cached patient, when the network is offline, the patient's data and active fractures must be accessible from local storage.
+**Validates: Requirements 29.3, 29.4, 29.5**
+
+**Property 22: Sync Queue Persistence**
+*For any* action queued while offline, the action must persist in the queue until successfully synced or explicitly removed.
+**Validates: Requirements 29.6, 29.7**
+
+**Property 23: Cache Freshness Indicator**
+*For any* cached data displayed to the user, the UI must show a timestamp indicating when the data was last updated.
+**Validates: Requirements 29.8, 29.9**
+
+### Multi-Language Properties
+
+**Property 24: Language Consistency**
+*For any* clinical interface element, when the user selects a language, all labels and messages must be displayed in that language.
+**Validates: Requirements 36.1, 36.2, 36.3, 36.4, 36.5, 36.6**
+
+**Property 25: Medical Terminology Preservation**
+*For any* translated interface, medical terminology must remain in English where translation would reduce clinical precision.
+**Validates: Requirements 36.7**
+
+### Training and Onboarding Properties
+
+**Property 26: Tutorial Completion Tracking**
+*For any* user, the system must track which training modules have been completed.
+**Validates: Requirements 37.6, 37.7**
+
+**Property 27: Contextual Help Availability**
+*For any* feature in the system, contextual help must be available when the user accesses that feature for the first time.
+**Validates: Requirements 37.5, 37.8**
+
+### Configuration Management Properties
+
+**Property 28: Configuration Validation**
+*For any* configuration update, the system must validate all configuration values before applying the changes.
+**Validates: Requirements 31.9, 31.10**
+
+**Property 29: Configuration Version History**
+*For any* configuration change, the system must maintain a version history entry with the old value, new value, user, and timestamp.
+**Validates: Requirements 31.11, 31.12**
+
+### Integration Testing Properties
+
+**Property 30: HL7 Message Validation**
+*For any* HL7 message received, the system must validate the message structure against HL7 v2.x specifications before processing.
+**Validates: Requirements 40.7, 40.9**
+
+**Property 31: FHIR Resource Validation**
+*For any* FHIR resource received, the system must validate the resource structure against FHIR R4 specifications before processing.
+**Validates: Requirements 40.8, 40.9**
+
+### Minimum Data Requirements Properties
+
+**Property 32: Required Field Presence**
+*For any* patient admission event, the system must verify that all minimum required fields (patient demographics, admission date, primary diagnosis) are present before creating a patient timeline.
+**Validates: Requirements 41.1, 41.2, 41.3**
+
+
+## Detailed Design Expansions
+
+### Offline Capability (PWA) - Requirement 29
+
+#### Service Worker Implementation
+
+**Service Worker Architecture**:
 ```typescript
-// Average cost per analysis stays within budget
-E[costPerAnalysis] ≤ $0.20
+// public/service-worker.ts
+import { precacheAndRoute } from 'workbox-precaching';
+import { registerRoute } from 'workbox-routing';
+import { CacheFirst, NetworkFirst, StaleWhileRevalidate } from 'workbox-strategies';
+import { ExpirationPlugin } from 'workbox-expiration';
+import { BackgroundSyncPlugin } from 'workbox-background-sync';
+
+// Precache static assets
+precacheAndRoute(self.__WB_MANIFEST);
+
+// Cache strategy for API responses
+registerRoute(
+  ({ url }) => url.pathname.startsWith('/api/v1/fractures'),
+  new NetworkFirst({
+    cacheName: 'fractures-cache',
+    plugins: [
+      new ExpirationPlugin({
+        maxEntries: 100,
+        maxAgeSeconds: 60 * 60, // 1 hour
+      }),
+    ],
+  })
+);
+
+// Cache strategy for patient data
+registerRoute(
+  ({ url }) => url.pathname.startsWith('/api/v1/patients'),
+  new NetworkFirst({
+    cacheName: 'patients-cache',
+    plugins: [
+      new ExpirationPlugin({
+        maxEntries: 50,
+        maxAgeSeconds: 30 * 60, // 30 minutes
+      }),
+    ],
+  })
+);
+
+// Cache strategy for static assets
+registerRoute(
+  ({ request }) => request.destination === 'image' || request.destination === 'font',
+  new CacheFirst({
+    cacheName: 'static-assets',
+    plugins: [
+      new ExpirationPlugin({
+        maxEntries: 60,
+        maxAgeSeconds: 30 * 24 * 60 * 60, // 30 days
+      }),
+    ],
+  })
+);
+
+// Background sync for offline actions
+const bgSyncPlugin = new BackgroundSyncPlugin('offline-actions-queue', {
+  maxRetentionTime: 24 * 60, // Retry for up to 24 hours
+});
+
+registerRoute(
+  ({ url }) => url.pathname.startsWith('/api/v1/fractures') && url.method === 'POST',
+  new NetworkOnly({
+    plugins: [bgSyncPlugin],
+  }),
+  'POST'
+);
+```
+
+#### IndexedDB Schema for Offline Storage
+
+**Database Structure**:
+```typescript
+// src/services/offline/db-schema.ts
+import Dexie, { Table } from 'dexie';
+
+export interface CachedPatient {
+  patientId: string;
+  hospitalId: string;
+  data: PatientState;
+  cachedAt: Date;
+  expiresAt: Date;
+}
+
+export interface CachedFracture {
+  fractureId: string;
+  patientId: string;
+  data: SemanticFracture;
+  cachedAt: Date;
+  expiresAt: Date;
+}
+
+export interface OfflineAction {
+  actionId: string;
+  actionType: 'ACKNOWLEDGE' | 'FEEDBACK' | 'APPROVE';
+  resourceId: string;
+  payload: any;
+  createdAt: Date;
+  retryCount: number;
+  status: 'PENDING' | 'SYNCING' | 'SYNCED' | 'FAILED';
+}
+
+export interface SyncMetadata {
+  key: string;
+  lastSyncTime: Date;
+  syncStatus: 'SUCCESS' | 'FAILED';
+  errorMessage?: string;
+}
+
+export class OfflineDatabase extends Dexie {
+  patients!: Table<CachedPatient, string>;
+  fractures!: Table<CachedFracture, string>;
+  actions!: Table<OfflineAction, string>;
+  syncMetadata!: Table<SyncMetadata, string>;
+
+  constructor() {
+    super('MEDWAROfflineDB');
+    
+    this.version(1).stores({
+      patients: 'patientId, hospitalId, cachedAt, expiresAt',
+      fractures: 'fractureId, patientId, cachedAt, expiresAt',
+      actions: 'actionId, actionType, resourceId, createdAt, status',
+      syncMetadata: 'key, lastSyncTime'
+    });
+  }
+}
+
+export const offlineDB = new OfflineDatabase();
+```
+
+#### Sync Strategies and Conflict Resolution
+
+**Sync Manager**:
+```typescript
+// src/services/offline/sync-manager.ts
+export class SyncManager {
+  private syncInProgress = false;
+  
+  async syncAll(): Promise<SyncResult> {
+    if (this.syncInProgress) {
+      return { status: 'ALREADY_SYNCING' };
+    }
+    
+    this.syncInProgress = true;
+    
+    try {
+      // 1. Sync offline actions first (user-initiated changes)
+      const actionResults = await this.syncOfflineActions();
+      
+      // 2. Refresh cached data from server
+      const dataResults = await this.refreshCachedData();
+      
+      // 3. Resolve any conflicts
+      const conflicts = await this.detectConflicts();
+      if (conflicts.length > 0) {
+        await this.resolveConflicts(conflicts);
+      }
+      
+      // 4. Update sync metadata
+      await offlineDB.syncMetadata.put({
+        key: 'last-full-sync',
+        lastSyncTime: new Date(),
+        syncStatus: 'SUCCESS'
+      });
+      
+      return {
+        status: 'SUCCESS',
+        actionsSynced: actionResults.synced,
+        actionsFailed: actionResults.failed,
+        dataRefreshed: dataResults.refreshed
+      };
+    } catch (error) {
+      await offlineDB.syncMetadata.put({
+        key: 'last-full-sync',
+        lastSyncTime: new Date(),
+        syncStatus: 'FAILED',
+        errorMessage: error.message
+      });
+      
+      return {
+        status: 'FAILED',
+        error: error.message
+      };
+    } finally {
+      this.syncInProgress = false;
+    }
+  }
+  
+  private async syncOfflineActions(): Promise<ActionSyncResult> {
+    const pendingActions = await offlineDB.actions
+      .where('status')
+      .equals('PENDING')
+      .toArray();
+    
+    let synced = 0;
+    let failed = 0;
+    
+    for (const action of pendingActions) {
+      try {
+        // Update status to syncing
+        await offlineDB.actions.update(action.actionId, { status: 'SYNCING' });
+        
+        // Send to server
+        await this.sendActionToServer(action);
+        
+        // Mark as synced
+        await offlineDB.actions.update(action.actionId, { status: 'SYNCED' });
+        synced++;
+      } catch (error) {
+        // Increment retry count
+        const newRetryCount = action.retryCount + 1;
+        
+        if (newRetryCount >= 3) {
+          // Max retries reached, mark as failed
+          await offlineDB.actions.update(action.actionId, {
+            status: 'FAILED',
+            retryCount: newRetryCount
+          });
+          failed++;
+        } else {
+          // Reset to pending for next sync attempt
+          await offlineDB.actions.update(action.actionId, {
+            status: 'PENDING',
+            retryCount: newRetryCount
+          });
+        }
+      }
+    }
+    
+    return { synced, failed };
+  }
+  
+  private async resolveConflicts(conflicts: Conflict[]): Promise<void> {
+    for (const conflict of conflicts) {
+      // Server state wins by default (last-write-wins)
+      if (conflict.type === 'FRACTURE_STATUS') {
+        // If server shows acknowledged but local shows pending,
+        // trust server (another user may have acknowledged)
+        await offlineDB.fractures.update(conflict.resourceId, {
+          data: conflict.serverState
+        });
+      } else if (conflict.type === 'PATIENT_DATA') {
+        // For patient data, always use server state
+        await offlineDB.patients.update(conflict.resourceId, {
+          data: conflict.serverState
+        });
+      }
+      
+      // Notify user of conflict resolution
+      await this.notifyUser({
+        type: 'CONFLICT_RESOLVED',
+        message: `Data for ${conflict.resourceType} was updated by another user`,
+        resourceId: conflict.resourceId
+      });
+    }
+  }
+}
+```
+
+#### Cache Invalidation Policies
+
+**Cache Invalidation Strategy**:
+```typescript
+// src/services/offline/cache-invalidation.ts
+export class CacheInvalidationManager {
+  // Time-based expiration
+  async invalidateExpiredCache(): Promise<void> {
+    const now = new Date();
+    
+    // Remove expired patients
+    await offlineDB.patients
+      .where('expiresAt')
+      .below(now)
+      .delete();
+    
+    // Remove expired fractures
+    await offlineDB.fractures
+      .where('expiresAt')
+      .below(now)
+      .delete();
+  }
+  
+  // Event-based invalidation
+  async invalidateOnEvent(event: CacheInvalidationEvent): Promise<void> {
+    switch (event.type) {
+      case 'PATIENT_DISCHARGED':
+        // Remove patient and all associated fractures
+        await offlineDB.patients.delete(event.patientId);
+        await offlineDB.fractures
+          .where('patientId')
+          .equals(event.patientId)
+          .delete();
+        break;
+        
+      case 'FRACTURE_RESOLVED':
+        // Remove specific fracture
+        await offlineDB.fractures.delete(event.fractureId);
+        break;
+        
+      case 'USER_LOGOUT':
+        // Clear all cached data
+        await offlineDB.patients.clear();
+        await offlineDB.fractures.clear();
+        await offlineDB.actions.clear();
+        break;
+        
+      case 'HOSPITAL_CHANGED':
+        // Clear data for previous hospital
+        await offlineDB.patients
+          .where('hospitalId')
+          .equals(event.previousHospitalId)
+          .delete();
+        await offlineDB.fractures
+          .where('patientId')
+          .anyOf(await this.getPatientIdsForHospital(event.previousHospitalId))
+          .delete();
+        break;
+    }
+  }
+  
+  // Size-based eviction (LRU)
+  async evictLRUIfNeeded(): Promise<void> {
+    const maxPatients = 50;
+    const maxFractures = 100;
+    
+    const patientCount = await offlineDB.patients.count();
+    if (patientCount > maxPatients) {
+      // Remove oldest cached patients
+      const toRemove = patientCount - maxPatients;
+      const oldestPatients = await offlineDB.patients
+        .orderBy('cachedAt')
+        .limit(toRemove)
+        .toArray();
+      
+      for (const patient of oldestPatients) {
+        await offlineDB.patients.delete(patient.patientId);
+      }
+    }
+    
+    const fractureCount = await offlineDB.fractures.count();
+    if (fractureCount > maxFractures) {
+      // Remove oldest cached fractures
+      const toRemove = fractureCount - maxFractures;
+      const oldestFractures = await offlineDB.fractures
+        .orderBy('cachedAt')
+        .limit(toRemove)
+        .toArray();
+      
+      for (const fracture of oldestFractures) {
+        await offlineDB.fractures.delete(fracture.fractureId);
+      }
+    }
+  }
+}
 ```
 
 
@@ -4466,3 +4797,3277 @@ E[costPerAnalysis] ≤ $0.20
 
 **End of Design Document**
 
+
+
+### Alert Notification System - Requirement 30
+
+#### Escalation Policies and Workflows
+
+**Escalation Policy Engine**:
+```typescript
+// src/services/notifications/escalation-engine.ts
+export interface EscalationPolicy {
+  policyId: string;
+  hospitalId: string;
+  fractureType?: FractureType;
+  minEntropyScore: number;
+  escalationChain: EscalationLevel[];
+}
+
+export interface EscalationLevel {
+  level: number;
+  delayMinutes: number;
+  targetRoles: ClinicalRole[];
+  channels: NotificationChannel[];
+  requireAcknowledgement: boolean;
+}
+
+export class EscalationPolicyEngine {
+  async triggerEscalation(fracture: SemanticFracture): Promise<void> {
+    const policy = await this.getEscalationPolicy(fracture);
+    
+    // Create escalation tracker
+    const escalation: EscalationTracker = {
+      escalationId: generateId(),
+      fractureId: fracture.fractureId,
+      policyId: policy.policyId,
+      currentLevel: 0,
+      startedAt: new Date(),
+      status: 'ACTIVE'
+    };
+    
+    await this.saveEscalationTracker(escalation);
+    
+    // Start escalation chain
+    await this.executeEscalationLevel(escalation, policy.escalationChain[0]);
+    
+    // Schedule next escalation levels
+    for (let i = 1; i < policy.escalationChain.length; i++) {
+      const level = policy.escalationChain[i];
+      await this.scheduleEscalation(escalation.escalationId, level, level.delayMinutes);
+    }
+  }
+  
+  private async executeEscalationLevel(
+    escalation: EscalationTracker,
+    level: EscalationLevel
+  ): Promise<void> {
+    // Get target users for this level
+    const targetUsers = await this.getTargetUsers(
+      escalation.fractureId,
+      level.targetRoles
+    );
+    
+    // Send notifications via all configured channels
+    for (const user of targetUsers) {
+      for (const channel of level.channels) {
+        await this.sendNotification({
+          userId: user.userId,
+          channel,
+          fractureId: escalation.fractureId,
+          escalationLevel: level.level,
+          requireAcknowledgement: level.requireAcknowledgement
+        });
+      }
+    }
+    
+    // Update escalation tracker
+    await this.updateEscalationTracker(escalation.escalationId, {
+      currentLevel: level.level,
+      lastEscalatedAt: new Date()
+    });
+  }
+  
+  async handleAcknowledgement(fractureId: string, userId: string): Promise<void> {
+    // Find active escalation for this fracture
+    const escalation = await this.getActiveEscalation(fractureId);
+    
+    if (escalation) {
+      // Cancel pending escalations
+      await this.cancelScheduledEscalations(escalation.escalationId);
+      
+      // Mark escalation as resolved
+      await this.updateEscalationTracker(escalation.escalationId, {
+        status: 'RESOLVED',
+        resolvedBy: userId,
+        resolvedAt: new Date()
+      });
+    }
+  }
+}
+```
+
+**Default Escalation Policies**:
+```typescript
+const defaultEscalationPolicies: EscalationPolicy[] = [
+  {
+    policyId: 'high-risk-default',
+    hospitalId: '*', // Applies to all hospitals
+    minEntropyScore: 0.7,
+    escalationChain: [
+      {
+        level: 0,
+        delayMinutes: 0,
+        targetRoles: ['NURSE'],
+        channels: ['PUSH', 'SMS'],
+        requireAcknowledgement: true
+      },
+      {
+        level: 1,
+        delayMinutes: 2,
+        targetRoles: ['CHARGE_NURSE'],
+        channels: ['PUSH', 'SMS', 'EMAIL'],
+        requireAcknowledgement: true
+      },
+      {
+        level: 2,
+        delayMinutes: 5,
+        targetRoles: ['DOCTOR', 'ATTENDING_PHYSICIAN'],
+        channels: ['PUSH', 'SMS', 'PHONE'],
+        requireAcknowledgement: true
+      },
+      {
+        level: 3,
+        delayMinutes: 10,
+        targetRoles: ['PATIENT_SAFETY_OFFICER'],
+        channels: ['PUSH', 'SMS', 'PHONE', 'EMAIL'],
+        requireAcknowledgement: false
+      }
+    ]
+  },
+  {
+    policyId: 'critical-medication-error',
+    hospitalId: '*',
+    fractureType: 'CONTRAINDICATION_OMISSION',
+    minEntropyScore: 0.8,
+    escalationChain: [
+      {
+        level: 0,
+        delayMinutes: 0,
+        targetRoles: ['NURSE', 'DOCTOR'],
+        channels: ['PUSH', 'SMS', 'PHONE'],
+        requireAcknowledgement: true
+      },
+      {
+        level: 1,
+        delayMinutes: 1, // Faster escalation for critical issues
+        targetRoles: ['ATTENDING_PHYSICIAN', 'PATIENT_SAFETY_OFFICER'],
+        channels: ['PUSH', 'SMS', 'PHONE'],
+        requireAcknowledgement: true
+      }
+    ]
+  }
+];
+```
+
+#### Notification Channels
+
+**Multi-Channel Notification Service**:
+```typescript
+// src/services/notifications/notification-service.ts
+export class NotificationService {
+  async sendNotification(notification: NotificationRequest): Promise<NotificationResult> {
+    const user = await this.getUserPreferences(notification.userId);
+    const channels = this.selectChannels(notification.channel, user.preferences);
+    
+    const results: ChannelResult[] = [];
+    
+    for (const channel of channels) {
+      try {
+        const result = await this.sendViaChannel(channel, notification);
+        results.push(result);
+        
+        if (result.success) {
+          // If any channel succeeds, consider notification sent
+          break;
+        }
+      } catch (error) {
+        results.push({
+          channel,
+          success: false,
+          error: error.message
+        });
+      }
+    }
+    
+    // Log notification attempt
+    await this.logNotification({
+      notificationId: generateId(),
+      userId: notification.userId,
+      fractureId: notification.fractureId,
+      channels: results,
+      sentAt: new Date()
+    });
+    
+    return {
+      success: results.some(r => r.success),
+      channels: results
+    };
+  }
+  
+  private async sendViaChannel(
+    channel: NotificationChannel,
+    notification: NotificationRequest
+  ): Promise<ChannelResult> {
+    switch (channel) {
+      case 'PUSH':
+        return await this.sendPushNotification(notification);
+      case 'SMS':
+        return await this.sendSMSNotification(notification);
+      case 'EMAIL':
+        return await this.sendEmailNotification(notification);
+      case 'PHONE':
+        return await this.initiatePhoneCall(notification);
+      default:
+        throw new Error(`Unsupported channel: ${channel}`);
+    }
+  }
+  
+  private async sendPushNotification(notification: NotificationRequest): Promise<ChannelResult> {
+    // Web Push API for browser notifications
+    const payload = {
+      title: `High-Risk Alert: ${notification.fractureType}`,
+      body: `Patient ${notification.patientId} - Entropy Score: ${notification.entropyScore}`,
+      icon: '/icons/alert-icon.png',
+      badge: '/icons/badge-icon.png',
+      data: {
+        fractureId: notification.fractureId,
+        url: `/fractures/${notification.fractureId}`
+      },
+      actions: [
+        { action: 'view', title: 'View Details' },
+        { action: 'acknowledge', title: 'Acknowledge' }
+      ]
+    };
+    
+    const subscription = await this.getUserPushSubscription(notification.userId);
+    await webpush.sendNotification(subscription, JSON.stringify(payload));
+    
+    return { channel: 'PUSH', success: true };
+  }
+  
+  private async sendSMSNotification(notification: NotificationRequest): Promise<ChannelResult> {
+    // Amazon SNS for SMS
+    const phoneNumber = await this.getUserPhoneNumber(notification.userId);
+    
+    const message = `MEDWAR Alert: High-risk ${notification.fractureType} detected for patient ${notification.patientId}. Entropy Score: ${notification.entropyScore}. View: ${process.env.APP_URL}/fractures/${notification.fractureId}`;
+    
+    await sns.publish({
+      PhoneNumber: phoneNumber,
+      Message: message,
+      MessageAttributes: {
+        'AWS.SNS.SMS.SMSType': {
+          DataType: 'String',
+          StringValue: 'Transactional' // High priority
+        }
+      }
+    }).promise();
+    
+    return { channel: 'SMS', success: true };
+  }
+  
+  private async sendEmailNotification(notification: NotificationRequest): Promise<ChannelResult> {
+    // Amazon SES for email
+    const email = await this.getUserEmail(notification.userId);
+    const fracture = await this.getFractureDetails(notification.fractureId);
+    
+    const htmlBody = this.renderEmailTemplate('fracture-alert', {
+      fracture,
+      user: await this.getUser(notification.userId),
+      viewUrl: `${process.env.APP_URL}/fractures/${notification.fractureId}`
+    });
+    
+    await ses.sendEmail({
+      Source: 'alerts@medwar.io',
+      Destination: {
+        ToAddresses: [email]
+      },
+      Message: {
+        Subject: {
+          Data: `MEDWAR Alert: ${notification.fractureType}`
+        },
+        Body: {
+          Html: {
+            Data: htmlBody
+          }
+        }
+      }
+    }).promise();
+    
+    return { channel: 'EMAIL', success: true };
+  }
+}
+```
+
+#### Rate Limiting and Alert Fatigue Prevention
+
+**Rate Limiter**:
+```typescript
+// src/services/notifications/rate-limiter.ts
+export class NotificationRateLimiter {
+  private readonly limits = {
+    PUSH: { maxPerHour: 10, maxPerDay: 50 },
+    SMS: { maxPerHour: 5, maxPerDay: 20 },
+    EMAIL: { maxPerHour: 10, maxPerDay: 30 }
+  };
+  
+  async checkRateLimit(
+    userId: string,
+    channel: NotificationChannel
+  ): Promise<RateLimitResult> {
+    const now = new Date();
+    const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+    const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    
+    // Count notifications in last hour
+    const hourlyCount = await this.countNotifications(userId, channel, oneHourAgo);
+    
+    // Count notifications in last day
+    const dailyCount = await this.countNotifications(userId, channel, oneDayAgo);
+    
+    const limit = this.limits[channel];
+    
+    if (hourlyCount >= limit.maxPerHour) {
+      return {
+        allowed: false,
+        reason: 'HOURLY_LIMIT_EXCEEDED',
+        retryAfter: this.calculateRetryAfter(userId, channel, 'HOURLY')
+      };
+    }
+    
+    if (dailyCount >= limit.maxPerDay) {
+      return {
+        allowed: false,
+        reason: 'DAILY_LIMIT_EXCEEDED',
+        retryAfter: this.calculateRetryAfter(userId, channel, 'DAILY')
+      };
+    }
+    
+    return { allowed: true };
+  }
+  
+  async applyIntelligentBatching(
+    userId: string,
+    notifications: NotificationRequest[]
+  ): Promise<NotificationRequest[]> {
+    // Group similar notifications
+    const grouped = this.groupSimilarNotifications(notifications);
+    
+    // Create batched notifications
+    const batched: NotificationRequest[] = [];
+    
+    for (const group of grouped) {
+      if (group.length === 1) {
+        batched.push(group[0]);
+      } else {
+        // Combine multiple similar notifications into one
+        batched.push({
+          userId,
+          channel: group[0].channel,
+          title: `${group.length} High-Risk Alerts`,
+          body: `You have ${group.length} new high-risk fractures requiring attention`,
+          data: {
+            fractureIds: group.map(n => n.fractureId),
+            url: `/fractures?status=ACTIVE&highRisk=true`
+          }
+        });
+      }
+    }
+    
+    return batched;
+  }
+  
+  private groupSimilarNotifications(
+    notifications: NotificationRequest[]
+  ): NotificationRequest[][] {
+    // Group by fracture type and time window (5 minutes)
+    const groups = new Map<string, NotificationRequest[]>();
+    
+    for (const notification of notifications) {
+      const key = `${notification.fractureType}-${Math.floor(notification.timestamp.getTime() / (5 * 60 * 1000))}`;
+      
+      if (!groups.has(key)) {
+        groups.set(key, []);
+      }
+      
+      groups.get(key).push(notification);
+    }
+    
+    return Array.from(groups.values());
+  }
+}
+```
+
+#### Notification Preferences Management
+
+**User Preferences**:
+```typescript
+// src/services/notifications/preferences.ts
+export interface NotificationPreferences {
+  userId: string;
+  channels: {
+    push: {
+      enabled: boolean;
+      highRiskOnly: boolean;
+    };
+    sms: {
+      enabled: boolean;
+      phoneNumber: string;
+      highRiskOnly: boolean;
+      quietHours?: {
+        start: string; // HH:MM
+        end: string; // HH:MM
+      };
+    };
+    email: {
+      enabled: boolean;
+      emailAddress: string;
+      digestMode: boolean; // Send daily digest instead of individual emails
+      digestTime?: string; // HH:MM
+    };
+  };
+  fractureTypeFilters: {
+    [key in FractureType]?: boolean; // Only notify for specific types
+  };
+  minEntropyScore: number; // Only notify if entropy score >= this value
+}
+
+export class NotificationPreferencesManager {
+  async getPreferences(userId: string): Promise<NotificationPreferences> {
+    const prefs = await dynamodb.getItem({
+      TableName: 'NotificationPreferences',
+      Key: { userId }
+    }).promise();
+    
+    return prefs.Item || this.getDefaultPreferences(userId);
+  }
+  
+  async updatePreferences(
+    userId: string,
+    updates: Partial<NotificationPreferences>
+  ): Promise<void> {
+    await dynamodb.updateItem({
+      TableName: 'NotificationPreferences',
+      Key: { userId },
+      UpdateExpression: 'SET #channels = :channels, #filters = :filters, #minScore = :minScore',
+      ExpressionAttributeNames: {
+        '#channels': 'channels',
+        '#filters': 'fractureTypeFilters',
+        '#minScore': 'minEntropyScore'
+      },
+      ExpressionAttributeValues: {
+        ':channels': updates.channels,
+        ':filters': updates.fractureTypeFilters,
+        ':minScore': updates.minEntropyScore
+      }
+    }).promise();
+  }
+  
+  private getDefaultPreferences(userId: string): NotificationPreferences {
+    return {
+      userId,
+      channels: {
+        push: {
+          enabled: true,
+          highRiskOnly: false
+        },
+        sms: {
+          enabled: false,
+          phoneNumber: '',
+          highRiskOnly: true
+        },
+        email: {
+          enabled: true,
+          emailAddress: '',
+          digestMode: false
+        }
+      },
+      fractureTypeFilters: {},
+      minEntropyScore: 0.5
+    };
+  }
+}
+```
+
+
+### Configuration Management - Requirement 31
+
+#### Configuration Validation Rules
+
+**Configuration Validator**:
+```typescript
+// src/services/config/validator.ts
+export class ConfigurationValidator {
+  private validationRules: Map<string, ValidationRule> = new Map([
+    ['entropyThresholds.default', {
+      type: 'number',
+      min: 0.0,
+      max: 1.0,
+      required: true
+    }],
+    ['debateConfig.minRounds', {
+      type: 'number',
+      min: 1,
+      max: 10,
+      required: true
+    }],
+    ['debateConfig.maxRounds', {
+      type: 'number',
+      min: 1,
+      max: 10,
+      required: true,
+      customValidation: (value, config) => {
+        return value >= config.debateConfig.minRounds;
+      },
+      errorMessage: 'maxRounds must be >= minRounds'
+    }],
+    ['notificationConfig.rateLimitPerHour', {
+      type: 'number',
+      min: 1,
+      max: 100,
+      required: true
+    }],
+    ['ehrConfig.hl7Endpoint', {
+      type: 'string',
+      pattern: /^https?:\/\/.+/,
+      required: true
+    }]
+  ]);
+  
+  async validate(config: Partial<HospitalConfiguration>): Promise<ValidationResult> {
+    const errors: ValidationError[] = [];
+    
+    // Validate each field
+    for (const [path, rule] of this.validationRules) {
+      const value = this.getNestedValue(config, path);
+      
+      // Check required
+      if (rule.required && (value === undefined || value === null)) {
+        errors.push({
+          path,
+          message: `${path} is required`
+        });
+        continue;
+      }
+      
+      if (value !== undefined && value !== null) {
+        // Check type
+        if (rule.type && typeof value !== rule.type) {
+          errors.push({
+            path,
+            message: `${path} must be of type ${rule.type}`
+          });
+          continue;
+        }
+        
+        // Check numeric bounds
+        if (rule.type === 'number') {
+          if (rule.min !== undefined && value < rule.min) {
+            errors.push({
+              path,
+              message: `${path} must be >= ${rule.min}`
+            });
+          }
+          if (rule.max !== undefined && value > rule.max) {
+            errors.push({
+              path,
+              message: `${path} must be <= ${rule.max}`
+            });
+          }
+        }
+        
+        // Check string pattern
+        if (rule.type === 'string' && rule.pattern) {
+          if (!rule.pattern.test(value)) {
+            errors.push({
+              path,
+              message: `${path} does not match required pattern`
+            });
+          }
+        }
+        
+        // Custom validation
+        if (rule.customValidation) {
+          if (!rule.customValidation(value, config)) {
+            errors.push({
+              path,
+              message: rule.errorMessage || `${path} failed custom validation`
+            });
+          }
+        }
+      }
+    }
+    
+    // Cross-field validations
+    if (config.ehrConfig) {
+      if (!config.ehrConfig.hl7Endpoint && !config.ehrConfig.fhirEndpoint) {
+        errors.push({
+          path: 'ehrConfig',
+          message: 'At least one of hl7Endpoint or fhirEndpoint must be provided'
+        });
+      }
+    }
+    
+    return {
+      valid: errors.length === 0,
+      errors
+    };
+  }
+  
+  private getNestedValue(obj: any, path: string): any {
+    return path.split('.').reduce((current, key) => current?.[key], obj);
+  }
+}
+```
+
+#### Version Control and Rollback Mechanisms
+
+**Configuration Version Manager**:
+```typescript
+// src/services/config/version-manager.ts
+export interface ConfigurationVersion {
+  versionId: string;
+  hospitalId: string;
+  version: number;
+  config: HospitalConfiguration;
+  changedBy: string;
+  changedAt: Date;
+  changeReason?: string;
+  previousVersionId?: string;
+}
+
+export class ConfigurationVersionManager {
+  async saveVersion(
+    hospitalId: string,
+    config: HospitalConfiguration,
+    userId: string,
+    reason?: string
+  ): Promise<ConfigurationVersion> {
+    // Get current version
+    const currentVersion = await this.getCurrentVersion(hospitalId);
+    
+    // Create new version
+    const newVersion: ConfigurationVersion = {
+      versionId: generateId(),
+      hospitalId,
+      version: currentVersion ? currentVersion.version + 1 : 1,
+      config,
+      changedBy: userId,
+      changedAt: new Date(),
+      changeReason: reason,
+      previousVersionId: currentVersion?.versionId
+    };
+    
+    // Save to DynamoDB
+    await dynamodb.putItem({
+      TableName: 'ConfigurationVersions',
+      Item: newVersion
+    }).promise();
+    
+    // Update current configuration pointer
+    await dynamodb.putItem({
+      TableName: 'HospitalConfigurations',
+      Item: {
+        hospitalId,
+        currentVersionId: newVersion.versionId,
+        config,
+        updatedAt: new Date()
+      }
+    }).promise();
+    
+    return newVersion;
+  }
+  
+  async rollback(hospitalId: string, targetVersionId: string, userId: string): Promise<void> {
+    // Get target version
+    const targetVersion = await this.getVersion(targetVersionId);
+    
+    if (!targetVersion || targetVersion.hospitalId !== hospitalId) {
+      throw new Error('Invalid version ID');
+    }
+    
+    // Create new version with rolled-back config
+    await this.saveVersion(
+      hospitalId,
+      targetVersion.config,
+      userId,
+      `Rollback to version ${targetVersion.version}`
+    );
+    
+    // Log rollback event
+    await this.logConfigurationEvent({
+      eventType: 'ROLLBACK',
+      hospitalId,
+      userId,
+      fromVersionId: (await this.getCurrentVersion(hospitalId)).versionId,
+      toVersionId: targetVersionId,
+      timestamp: new Date()
+    });
+  }
+  
+  async getVersionHistory(
+    hospitalId: string,
+    limit: number = 50
+  ): Promise<ConfigurationVersion[]> {
+    const result = await dynamodb.query({
+      TableName: 'ConfigurationVersions',
+      KeyConditionExpression: 'hospitalId = :hospitalId',
+      ExpressionAttributeValues: {
+        ':hospitalId': hospitalId
+      },
+      ScanIndexForward: false, // Descending order (newest first)
+      Limit: limit
+    }).promise();
+    
+    return result.Items as ConfigurationVersion[];
+  }
+  
+  async compareVersions(
+    versionId1: string,
+    versionId2: string
+  ): Promise<ConfigurationDiff> {
+    const version1 = await this.getVersion(versionId1);
+    const version2 = await this.getVersion(versionId2);
+    
+    return this.computeDiff(version1.config, version2.config);
+  }
+  
+  private computeDiff(
+    config1: HospitalConfiguration,
+    config2: HospitalConfiguration
+  ): ConfigurationDiff {
+    const diff: ConfigurationDiff = {
+      added: [],
+      removed: [],
+      modified: []
+    };
+    
+    // Deep comparison logic
+    this.compareObjects(config1, config2, '', diff);
+    
+    return diff;
+  }
+}
+```
+
+#### Configuration Deployment Strategies
+
+**Deployment Strategy Manager**:
+```typescript
+// src/services/config/deployment-strategy.ts
+export class ConfigurationDeploymentManager {
+  async deployConfiguration(
+    hospitalId: string,
+    config: HospitalConfiguration,
+    strategy: DeploymentStrategy
+  ): Promise<DeploymentResult> {
+    // Validate configuration
+    const validator = new ConfigurationValidator();
+    const validation = await validator.validate(config);
+    
+    if (!validation.valid) {
+      return {
+        success: false,
+        errors: validation.errors
+      };
+    }
+    
+    switch (strategy.type) {
+      case 'IMMEDIATE':
+        return await this.deployImmediate(hospitalId, config);
+        
+      case 'CANARY':
+        return await this.deployCanary(hospitalId, config, strategy.canaryPercentage);
+        
+      case 'SCHEDULED':
+        return await this.scheduleDeployment(hospitalId, config, strategy.scheduledTime);
+        
+      default:
+        throw new Error(`Unknown deployment strategy: ${strategy.type}`);
+    }
+  }
+  
+  private async deployImmediate(
+    hospitalId: string,
+    config: HospitalConfiguration
+  ): Promise<DeploymentResult> {
+    try {
+      // Save new version
+      const version = await this.versionManager.saveVersion(
+        hospitalId,
+        config,
+        'system',
+        'Immediate deployment'
+      );
+      
+      // Invalidate cache
+      await this.invalidateConfigCache(hospitalId);
+      
+      // Notify all active sessions
+      await this.notifyConfigurationChange(hospitalId);
+      
+      return {
+        success: true,
+        versionId: version.versionId,
+        deployedAt: new Date()
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+  
+  private async deployCanary(
+    hospitalId: string,
+    config: HospitalConfiguration,
+    canaryPercentage: number
+  ): Promise<DeploymentResult> {
+    // Save new version
+    const version = await this.versionManager.saveVersion(
+      hospitalId,
+      config,
+      'system',
+      `Canary deployment (${canaryPercentage}%)`
+    );
+    
+    // Create canary deployment record
+    await dynamodb.putItem({
+      TableName: 'CanaryDeployments',
+      Item: {
+        deploymentId: generateId(),
+        hospitalId,
+        versionId: version.versionId,
+        canaryPercentage,
+        startedAt: new Date(),
+        status: 'ACTIVE'
+      }
+    }).promise();
+    
+    // Monitor metrics for 15 minutes
+    setTimeout(async () => {
+      const metrics = await this.monitorCanaryMetrics(hospitalId, version.versionId);
+      
+      if (metrics.healthy) {
+        // Promote to 100%
+        await this.deployImmediate(hospitalId, config);
+      } else {
+        // Rollback
+        await this.versionManager.rollback(
+          hospitalId,
+          version.previousVersionId,
+          'system'
+        );
+      }
+    }, 15 * 60 * 1000);
+    
+    return {
+      success: true,
+      versionId: version.versionId,
+      deployedAt: new Date(),
+      canaryPercentage
+    };
+  }
+}
+```
+
+#### Audit Trail for Configuration Changes
+
+**Configuration Audit Logger**:
+```typescript
+// src/services/config/audit-logger.ts
+export interface ConfigurationAuditLog {
+  logId: string;
+  hospitalId: string;
+  eventType: 'CREATE' | 'UPDATE' | 'ROLLBACK' | 'DELETE';
+  userId: string;
+  userRole: string;
+  timestamp: Date;
+  versionId: string;
+  previousVersionId?: string;
+  changes: ConfigurationChange[];
+  reason?: string;
+  ipAddress: string;
+  userAgent: string;
+}
+
+export interface ConfigurationChange {
+  path: string;
+  oldValue: any;
+  newValue: any;
+  changeType: 'ADDED' | 'MODIFIED' | 'REMOVED';
+}
+
+export class ConfigurationAuditLogger {
+  async logConfigurationChange(
+    hospitalId: string,
+    userId: string,
+    eventType: string,
+    versionId: string,
+    changes: ConfigurationChange[],
+    metadata: AuditMetadata
+  ): Promise<void> {
+    const auditLog: ConfigurationAuditLog = {
+      logId: generateId(),
+      hospitalId,
+      eventType: eventType as any,
+      userId,
+      userRole: metadata.userRole,
+      timestamp: new Date(),
+      versionId,
+      previousVersionId: metadata.previousVersionId,
+      changes,
+      reason: metadata.reason,
+      ipAddress: metadata.ipAddress,
+      userAgent: metadata.userAgent
+    };
+    
+    // Store in DynamoDB
+    await dynamodb.putItem({
+      TableName: 'ConfigurationAuditLogs',
+      Item: auditLog
+    }).promise();
+    
+    // Also store in S3 for long-term retention
+    await s3.putObject({
+      Bucket: 'medwar-audit-logs',
+      Key: `config-changes/${hospitalId}/${auditLog.logId}.json`,
+      Body: JSON.stringify(auditLog),
+      ServerSideEncryption: 'aws:kms'
+    }).promise();
+    
+    // Send to CloudWatch for monitoring
+    await cloudwatch.putMetricData({
+      Namespace: 'MEDWAR/Configuration',
+      MetricData: [
+        {
+          MetricName: 'ConfigurationChanges',
+          Value: 1,
+          Unit: 'Count',
+          Dimensions: [
+            { Name: 'HospitalId', Value: hospitalId },
+            { Name: 'EventType', Value: eventType }
+          ],
+          Timestamp: new Date()
+        }
+      ]
+    }).promise();
+  }
+  
+  async getAuditTrail(
+    hospitalId: string,
+    startDate: Date,
+    endDate: Date
+  ): Promise<ConfigurationAuditLog[]> {
+    const result = await dynamodb.query({
+      TableName: 'ConfigurationAuditLogs',
+      KeyConditionExpression: 'hospitalId = :hospitalId AND #timestamp BETWEEN :start AND :end',
+      ExpressionAttributeNames: {
+        '#timestamp': 'timestamp'
+      },
+      ExpressionAttributeValues: {
+        ':hospitalId': hospitalId,
+        ':start': startDate.toISOString(),
+        ':end': endDate.toISOString()
+      }
+    }).promise();
+    
+    return result.Items as ConfigurationAuditLog[];
+  }
+  
+  async generateComplianceReport(
+    hospitalId: string,
+    reportPeriod: { start: Date; end: Date }
+  ): Promise<ComplianceReport> {
+    const auditLogs = await this.getAuditTrail(
+      hospitalId,
+      reportPeriod.start,
+      reportPeriod.end
+    );
+    
+    return {
+      hospitalId,
+      reportPeriod,
+      totalChanges: auditLogs.length,
+      changesByType: this.groupByEventType(auditLogs),
+      changesByUser: this.groupByUser(auditLogs),
+      unauthorizedAttempts: auditLogs.filter(log => log.eventType === 'UNAUTHORIZED'),
+      criticalChanges: auditLogs.filter(log => this.isCriticalChange(log)),
+      generatedAt: new Date()
+    };
+  }
+}
+```
+
+
+### Multi-Language Support for Clinical Interfaces - Requirement 36
+
+#### Internationalization (i18n) Architecture
+
+**i18n Configuration**:
+```typescript
+// src/i18n/config.ts
+import i18n from 'i18next';
+import { initReactI18next } from 'react-i18next';
+import LanguageDetector from 'i18next-browser-languagedetector';
+import Backend from 'i18next-http-backend';
+
+export const supportedLanguages = {
+  en: { name: 'English', nativeName: 'English' },
+  hi: { name: 'Hindi', nativeName: 'हिंदी' },
+  ta: { name: 'Tamil', nativeName: 'தமிழ்' },
+  mr: { name: 'Marathi', nativeName: 'मराठी' },
+  te: { name: 'Telugu', nativeName: 'తెలుగు' },
+  bn: { name: 'Bengali', nativeName: 'বাংলা' }
+};
+
+i18n
+  .use(Backend)
+  .use(LanguageDetector)
+  .use(initReactI18next)
+  .init({
+    fallbackLng: 'en',
+    supportedLngs: Object.keys(supportedLanguages),
+    
+    // Namespace organization
+    ns: ['common', 'fractures', 'patients', 'dashboard', 'medical'],
+    defaultNS: 'common',
+    
+    // Backend configuration
+    backend: {
+      loadPath: '/locales/{{lng}}/{{ns}}.json',
+      addPath: '/locales/add/{{lng}}/{{ns}}'
+    },
+    
+    // Language detection
+    detection: {
+      order: ['localStorage', 'navigator', 'htmlTag'],
+      caches: ['localStorage'],
+      lookupLocalStorage: 'i18nextLng'
+    },
+    
+    // Interpolation
+    interpolation: {
+      escapeValue: false, // React already escapes
+      format: (value, format, lng) => {
+        if (format === 'uppercase') return value.toUpperCase();
+        if (format === 'lowercase') return value.toLowerCase();
+        if (value instanceof Date) {
+          return new Intl.DateTimeFormat(lng).format(value);
+        }
+        return value;
+      }
+    },
+    
+    // React specific
+    react: {
+      useSuspense: true,
+      bindI18n: 'languageChanged loaded',
+      bindI18nStore: 'added removed',
+      transEmptyNodeValue: '',
+      transSupportBasicHtmlNodes: true,
+      transKeepBasicHtmlNodesFor: ['br', 'strong', 'i', 'p']
+    }
+  });
+
+export default i18n;
+```
+
+**Translation Files Structure**:
+```json
+// public/locales/en/fractures.json
+{
+  "types": {
+    "MEDICATION_RECONCILIATION": "Medication Reconciliation Issue",
+    "FOLLOW_UP_COORDINATION": "Follow-up Coordination Gap",
+    "CONTRAINDICATION_OMISSION": "Contraindication Omission",
+    "HANDOVER_TASK_OMISSION": "Handover Task Missing",
+    "CRITICAL_CONTEXT_LOSS": "Critical Context Loss",
+    "PATIENT_COMPREHENSION": "Patient Comprehension Issue",
+    "RESPONSIBILITY_AMBIGUITY": "Responsibility Ambiguity",
+    "TIMELINE_AMBIGUITY": "Timeline Ambiguity",
+    "DEVICE_AFTERCARE": "Device Aftercare Gap"
+  },
+  "status": {
+    "ACTIVE": "Active",
+    "ACKNOWLEDGED": "Acknowledged",
+    "RESOLVED": "Resolved",
+    "DISMISSED": "Dismissed"
+  },
+  "actions": {
+    "acknowledge": "Acknowledge",
+    "view_details": "View Details",
+    "provide_feedback": "Provide Feedback",
+    "generate_countermeasures": "Generate Countermeasures"
+  },
+  "messages": {
+    "high_risk_alert": "High-risk semantic fracture detected",
+    "entropy_score": "Entropy Score: {{score}}",
+    "detected_at": "Detected at {{time}}",
+    "affected_roles": "Affected Roles: {{roles}}"
+  }
+}
+
+// public/locales/hi/fractures.json
+{
+  "types": {
+    "MEDICATION_RECONCILIATION": "दवा समाधान समस्या",
+    "FOLLOW_UP_COORDINATION": "फॉलो-अप समन्वय अंतर",
+    "CONTRAINDICATION_OMISSION": "विरोधाभास चूक",
+    "HANDOVER_TASK_OMISSION": "हस्तांतरण कार्य गायब",
+    "CRITICAL_CONTEXT_LOSS": "महत्वपूर्ण संदर्भ हानि",
+    "PATIENT_COMPREHENSION": "रोगी समझ समस्या",
+    "RESPONSIBILITY_AMBIGUITY": "जिम्मेदारी अस्पष्टता",
+    "TIMELINE_AMBIGUITY": "समयरेखा अस्पष्टता",
+    "DEVICE_AFTERCARE": "उपकरण देखभाल अंतर"
+  },
+  "status": {
+    "ACTIVE": "सक्रिय",
+    "ACKNOWLEDGED": "स्वीकृत",
+    "RESOLVED": "हल",
+    "DISMISSED": "खारिज"
+  },
+  "actions": {
+    "acknowledge": "स्वीकार करें",
+    "view_details": "विवरण देखें",
+    "provide_feedback": "प्रतिक्रिया दें",
+    "generate_countermeasures": "प्रतिकार उपाय बनाएं"
+  },
+  "messages": {
+    "high_risk_alert": "उच्च जोखिम अर्थ विभाजन का पता चला",
+    "entropy_score": "एंट्रॉपी स्कोर: {{score}}",
+    "detected_at": "{{time}} पर पता चला",
+    "affected_roles": "प्रभावित भूमिकाएं: {{roles}}"
+  }
+}
+```
+
+#### Translation Management Workflow
+
+**Translation Service**:
+```typescript
+// src/services/i18n/translation-service.ts
+export class TranslationService {
+  private medicalTermsPreserved = new Set([
+    // Medication names
+    'Metformin', 'Aspirin', 'Lisinopril', 'Atorvastatin', 'Insulin',
+    // Medical conditions
+    'Diabetes', 'Hypertension', 'Myocardial Infarction', 'Pneumonia',
+    // Medical procedures
+    'Angioplasty', 'Appendectomy', 'Colonoscopy',
+    // Lab tests
+    'CBC', 'HbA1c', 'Creatinine', 'Troponin',
+    // Units
+    'mg', 'ml', 'mmHg', 'bpm'
+  ]);
+  
+  async translateWithMedicalPreservation(
+    text: string,
+    targetLanguage: string
+  ): Promise<string> {
+    // Extract medical terms
+    const medicalTerms = this.extractMedicalTerms(text);
+    
+    // Replace medical terms with placeholders
+    let textWithPlaceholders = text;
+    const placeholderMap = new Map<string, string>();
+    
+    medicalTerms.forEach((term, index) => {
+      const placeholder = `__MEDICAL_TERM_${index}__`;
+      textWithPlaceholders = textWithPlaceholders.replace(term, placeholder);
+      placeholderMap.set(placeholder, term);
+    });
+    
+    // Translate text with placeholders
+    const translated = await this.translateText(textWithPlaceholders, targetLanguage);
+    
+    // Restore medical terms
+    let finalTranslation = translated;
+    placeholderMap.forEach((term, placeholder) => {
+      finalTranslation = finalTranslation.replace(placeholder, term);
+    });
+    
+    return finalTranslation;
+  }
+  
+  private extractMedicalTerms(text: string): string[] {
+    const terms: string[] = [];
+    
+    // Check against preserved terms list
+    this.medicalTermsPreserved.forEach(term => {
+      if (text.includes(term)) {
+        terms.push(term);
+      }
+    });
+    
+    // Extract drug names (capitalized words followed by dosage)
+    const drugPattern = /\b[A-Z][a-z]+(?:\s+\d+\s*(?:mg|ml|mcg|g|units?))\b/g;
+    const drugs = text.match(drugPattern) || [];
+    terms.push(...drugs);
+    
+    // Extract medical abbreviations (2-5 uppercase letters)
+    const abbreviationPattern = /\b[A-Z]{2,5}\b/g;
+    const abbreviations = text.match(abbreviationPattern) || [];
+    terms.push(...abbreviations);
+    
+    return [...new Set(terms)]; // Remove duplicates
+  }
+  
+  private async translateText(text: string, targetLanguage: string): Promise<string> {
+    // Use AWS Translate for translation
+    const result = await translate.translateText({
+      Text: text,
+      SourceLanguageCode: 'en',
+      TargetLanguageCode: targetLanguage,
+      TerminologyNames: ['medical-terminology'] // Custom terminology
+    }).promise();
+    
+    return result.TranslatedText;
+  }
+  
+  async validateTranslation(
+    originalText: string,
+    translatedText: string,
+    targetLanguage: string
+  ): Promise<ValidationResult> {
+    const issues: ValidationIssue[] = [];
+    
+    // Check medical term preservation
+    const originalTerms = this.extractMedicalTerms(originalText);
+    originalTerms.forEach(term => {
+      if (!translatedText.includes(term)) {
+        issues.push({
+          type: 'MEDICAL_TERM_MISSING',
+          term,
+          severity: 'HIGH'
+        });
+      }
+    });
+    
+    // Check length ratio (translated text shouldn't be >2x original)
+    const lengthRatio = translatedText.length / originalText.length;
+    if (lengthRatio > 2.0) {
+      issues.push({
+        type: 'LENGTH_ANOMALY',
+        message: `Translation is ${lengthRatio.toFixed(1)}x longer than original`,
+        severity: 'MEDIUM'
+      });
+    }
+    
+    // Check for untranslated placeholders
+    const placeholderPattern = /__[A-Z_]+__/g;
+    const untranslatedPlaceholders = translatedText.match(placeholderPattern);
+    if (untranslatedPlaceholders) {
+      issues.push({
+        type: 'UNTRANSLATED_PLACEHOLDER',
+        placeholders: untranslatedPlaceholders,
+        severity: 'HIGH'
+      });
+    }
+    
+    return {
+      valid: issues.filter(i => i.severity === 'HIGH').length === 0,
+      issues
+    };
+  }
+}
+```
+
+#### Language-Specific UI Considerations
+
+**UI Adaptation Service**:
+```typescript
+// src/services/i18n/ui-adapter.ts
+export class UIAdaptationService {
+  private languageConfigs = {
+    en: {
+      direction: 'ltr',
+      fontFamily: 'Inter, sans-serif',
+      fontSize: {
+        base: '16px',
+        small: '14px',
+        large: '18px'
+      },
+      lineHeight: 1.5
+    },
+    hi: {
+      direction: 'ltr',
+      fontFamily: 'Noto Sans Devanagari, sans-serif',
+      fontSize: {
+        base: '18px', // Slightly larger for Devanagari
+        small: '16px',
+        large: '20px'
+      },
+      lineHeight: 1.6 // More line height for complex scripts
+    },
+    ta: {
+      direction: 'ltr',
+      fontFamily: 'Noto Sans Tamil, sans-serif',
+      fontSize: {
+        base: '18px',
+        small: '16px',
+        large: '20px'
+      },
+      lineHeight: 1.6
+    },
+    mr: {
+      direction: 'ltr',
+      fontFamily: 'Noto Sans Devanagari, sans-serif',
+      fontSize: {
+        base: '18px',
+        small: '16px',
+        large: '20px'
+      },
+      lineHeight: 1.6
+    },
+    te: {
+      direction: 'ltr',
+      fontFamily: 'Noto Sans Telugu, sans-serif',
+      fontSize: {
+        base: '18px',
+        small: '16px',
+        large: '20px'
+      },
+      lineHeight: 1.6
+    },
+    bn: {
+      direction: 'ltr',
+      fontFamily: 'Noto Sans Bengali, sans-serif',
+      fontSize: {
+        base: '18px',
+        small: '16px',
+        large: '20px'
+      },
+      lineHeight: 1.6
+    }
+  };
+  
+  applyLanguageStyles(language: string): void {
+    const config = this.languageConfigs[language] || this.languageConfigs.en;
+    
+    // Apply to document root
+    document.documentElement.dir = config.direction;
+    document.documentElement.style.fontFamily = config.fontFamily;
+    document.documentElement.style.fontSize = config.fontSize.base;
+    document.documentElement.style.lineHeight = config.lineHeight.toString();
+    
+    // Update CSS custom properties
+    document.documentElement.style.setProperty('--font-size-base', config.fontSize.base);
+    document.documentElement.style.setProperty('--font-size-small', config.fontSize.small);
+    document.documentElement.style.setProperty('--font-size-large', config.fontSize.large);
+  }
+  
+  getDateTimeFormat(language: string): Intl.DateTimeFormat {
+    return new Intl.DateTimeFormat(language, {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  }
+  
+  getNumberFormat(language: string): Intl.NumberFormat {
+    return new Intl.NumberFormat(language, {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2
+    });
+  }
+  
+  adjustLayoutForLanguage(language: string): LayoutAdjustments {
+    const config = this.languageConfigs[language];
+    
+    return {
+      // Increase button padding for languages with taller scripts
+      buttonPadding: config.fontSize.base === '18px' ? '12px 24px' : '10px 20px',
+      
+      // Adjust input height for taller scripts
+      inputHeight: config.fontSize.base === '18px' ? '44px' : '40px',
+      
+      // Adjust modal width for longer translations
+      modalWidth: language === 'en' ? '600px' : '700px',
+      
+      // Adjust table column widths
+      tableColumnWidthMultiplier: language === 'en' ? 1.0 : 1.2
+    };
+  }
+}
+```
+
+#### RTL Support (Future Enhancement)
+
+**RTL Support Framework**:
+```typescript
+// src/services/i18n/rtl-support.ts
+export class RTLSupportService {
+  private rtlLanguages = new Set(['ar', 'he', 'ur']); // Arabic, Hebrew, Urdu
+  
+  isRTL(language: string): boolean {
+    return this.rtlLanguages.has(language);
+  }
+  
+  applyRTLStyles(language: string): void {
+    if (this.isRTL(language)) {
+      document.documentElement.dir = 'rtl';
+      
+      // Apply RTL-specific CSS
+      document.body.classList.add('rtl');
+      
+      // Flip icons and directional elements
+      this.flipDirectionalElements();
+    } else {
+      document.documentElement.dir = 'ltr';
+      document.body.classList.remove('rtl');
+    }
+  }
+  
+  private flipDirectionalElements(): void {
+    // Flip chevrons, arrows, and other directional icons
+    const directionalIcons = document.querySelectorAll('[data-directional="true"]');
+    directionalIcons.forEach(icon => {
+      icon.classList.add('rtl-flip');
+    });
+  }
+  
+  getFlexDirection(language: string, defaultDirection: 'row' | 'column'): string {
+    if (this.isRTL(language) && defaultDirection === 'row') {
+      return 'row-reverse';
+    }
+    return defaultDirection;
+  }
+}
+```
+
+
+### Training and Onboarding Support - Requirement 37
+
+#### Interactive Tutorial System Design
+
+**Tutorial Manager**:
+```typescript
+// src/services/training/tutorial-manager.ts
+export interface TutorialStep {
+  stepId: string;
+  title: string;
+  description: string;
+  targetElement?: string; // CSS selector
+  position: 'top' | 'bottom' | 'left' | 'right';
+  action?: 'click' | 'input' | 'scroll';
+  validation?: () => boolean;
+  skippable: boolean;
+}
+
+export interface Tutorial {
+  tutorialId: string;
+  title: string;
+  description: string;
+  targetRole: ClinicalRole;
+  estimatedDuration: number; // minutes
+  steps: TutorialStep[];
+  prerequisites?: string[]; // Other tutorial IDs
+}
+
+export class TutorialManager {
+  private tutorials: Map<string, Tutorial> = new Map();
+  
+  constructor() {
+    this.initializeTutorials();
+  }
+  
+  private initializeTutorials(): void {
+    // Nurse Tactical View Tutorial
+    this.tutorials.set('nurse-tactical-view-basics', {
+      tutorialId: 'nurse-tactical-view-basics',
+      title: 'Nurse Tactical View Basics',
+      description: 'Learn how to use the Nurse Tactical View to monitor patients and respond to alerts',
+      targetRole: 'NURSE',
+      estimatedDuration: 10,
+      steps: [
+        {
+          stepId: 'welcome',
+          title: 'Welcome to MEDWAR',
+          description: 'This tutorial will guide you through the Nurse Tactical View interface',
+          position: 'bottom',
+          skippable: false
+        },
+        {
+          stepId: 'patient-list',
+          title: 'Patient List',
+          description: 'This is your patient list. Patients with active high-risk fractures are highlighted in red.',
+          targetElement: '[data-tutorial="patient-list"]',
+          position: 'right',
+          skippable: true
+        },
+        {
+          stepId: 'fracture-alert',
+          title: 'Fracture Alerts',
+          description: 'Click on a patient to see their active fractures. High-risk fractures require immediate attention.',
+          targetElement: '[data-tutorial="patient-card"]:first-child',
+          position: 'right',
+          action: 'click',
+          skippable: true
+        },
+        {
+          stepId: 'acknowledge',
+          title: 'Acknowledge Alerts',
+          description: 'Click the "Acknowledge" button to confirm you have seen the alert. This stops escalation.',
+          targetElement: '[data-tutorial="acknowledge-button"]',
+          position: 'top',
+          action: 'click',
+          validation: () => this.checkAcknowledgement(),
+          skippable: true
+        },
+        {
+          stepId: 'countermeasures',
+          title: 'View Countermeasures',
+          description: 'Countermeasures are specific actions you can take to prevent the predicted issue.',
+          targetElement: '[data-tutorial="countermeasures"]',
+          position: 'left',
+          skippable: true
+        },
+        {
+          stepId: 'feedback',
+          title: 'Provide Feedback',
+          description: 'Help improve MEDWAR by providing feedback on alerts. Was this alert helpful?',
+          targetElement: '[data-tutorial="feedback-buttons"]',
+          position: 'top',
+          skippable: true
+        },
+        {
+          stepId: 'offline-mode',
+          title: 'Offline Mode',
+          description: 'MEDWAR works offline! Your actions are queued and synced when connection is restored.',
+          targetElement: '[data-tutorial="offline-indicator"]',
+          position: 'bottom',
+          skippable: true
+        },
+        {
+          stepId: 'complete',
+          title: 'Tutorial Complete!',
+          description: 'You are now ready to use the Nurse Tactical View. Access this tutorial anytime from the Help menu.',
+          position: 'bottom',
+          skippable: false
+        }
+      ]
+    });
+    
+    // Doctor Review View Tutorial
+    this.tutorials.set('doctor-review-basics', {
+      tutorialId: 'doctor-review-basics',
+      title: 'Doctor Review View Basics',
+      description: 'Learn how to review fractures and approve patient instructions',
+      targetRole: 'DOCTOR',
+      estimatedDuration: 15,
+      steps: [
+        {
+          stepId: 'welcome',
+          title: 'Welcome to Doctor Review View',
+          description: 'This tutorial will show you how to review semantic fractures and approve patient instructions',
+          position: 'bottom',
+          skippable: false
+        },
+        {
+          stepId: 'fracture-details',
+          title: 'Fracture Details',
+          description: 'Each fracture shows detailed evidence from the patient record. Click to expand.',
+          targetElement: '[data-tutorial="fracture-card"]',
+          position: 'right',
+          action: 'click',
+          skippable: true
+        },
+        {
+          stepId: 'evidence',
+          title: 'Evidence Grounding',
+          description: 'All fractures are backed by verifiable evidence. Click on evidence to see the source.',
+          targetElement: '[data-tutorial="evidence-section"]',
+          position: 'left',
+          skippable: true
+        },
+        {
+          stepId: 'agent-debate',
+          title: 'Agent Debate Summary',
+          description: 'See how different clinical perspectives analyzed this case.',
+          targetElement: '[data-tutorial="agent-debate"]',
+          position: 'left',
+          skippable: true
+        },
+        {
+          stepId: 'patient-instructions',
+          title: 'Patient Instructions',
+          description: 'Review and edit discharge instructions before approval.',
+          targetElement: '[data-tutorial="instructions-editor"]',
+          position: 'top',
+          skippable: true
+        },
+        {
+          stepId: 'approve',
+          title: 'Approve Instructions',
+          description: 'Once satisfied, approve the instructions for printing.',
+          targetElement: '[data-tutorial="approve-button"]',
+          position: 'top',
+          skippable: true
+        },
+        {
+          stepId: 'complete',
+          title: 'Tutorial Complete!',
+          description: 'You can now review fractures and approve patient instructions.',
+          position: 'bottom',
+          skippable: false
+        }
+      ]
+    });
+  }
+  
+  async startTutorial(tutorialId: string, userId: string): Promise<TutorialSession> {
+    const tutorial = this.tutorials.get(tutorialId);
+    
+    if (!tutorial) {
+      throw new Error(`Tutorial not found: ${tutorialId}`);
+    }
+    
+    // Check prerequisites
+    if (tutorial.prerequisites) {
+      const completed = await this.getCompletedTutorials(userId);
+      const missingPrereqs = tutorial.prerequisites.filter(p => !completed.includes(p));
+      
+      if (missingPrereqs.length > 0) {
+        throw new Error(`Missing prerequisites: ${missingPrereqs.join(', ')}`);
+      }
+    }
+    
+    // Create session
+    const session: TutorialSession = {
+      sessionId: generateId(),
+      tutorialId,
+      userId,
+      startedAt: new Date(),
+      currentStep: 0,
+      status: 'IN_PROGRESS'
+    };
+    
+    await this.saveTutorialSession(session);
+    
+    return session;
+  }
+  
+  async completeStep(sessionId: string, stepId: string): Promise<void> {
+    const session = await this.getTutorialSession(sessionId);
+    const tutorial = this.tutorials.get(session.tutorialId);
+    
+    const stepIndex = tutorial.steps.findIndex(s => s.stepId === stepId);
+    
+    if (stepIndex === -1) {
+      throw new Error(`Step not found: ${stepId}`);
+    }
+    
+    // Validate step completion if validation function exists
+    const step = tutorial.steps[stepIndex];
+    if (step.validation && !step.validation()) {
+      throw new Error('Step validation failed');
+    }
+    
+    // Update session
+    session.currentStep = stepIndex + 1;
+    
+    if (session.currentStep >= tutorial.steps.length) {
+      session.status = 'COMPLETED';
+      session.completedAt = new Date();
+      
+      // Record completion
+      await this.recordTutorialCompletion(session.userId, session.tutorialId);
+    }
+    
+    await this.saveTutorialSession(session);
+  }
+}
+```
+
+#### Role-Specific Training Modules
+
+**Training Module Manager**:
+```typescript
+// src/services/training/module-manager.ts
+export interface TrainingModule {
+  moduleId: string;
+  title: string;
+  description: string;
+  targetRoles: ClinicalRole[];
+  type: 'VIDEO' | 'INTERACTIVE' | 'DOCUMENT' | 'QUIZ';
+  duration: number; // minutes
+  content: ModuleContent;
+  assessmentRequired: boolean;
+  passingScore?: number; // percentage
+}
+
+export interface ModuleContent {
+  videoUrl?: string;
+  documentUrl?: string;
+  interactiveTutorialId?: string;
+  quizQuestions?: QuizQuestion[];
+}
+
+export interface QuizQuestion {
+  questionId: string;
+  question: string;
+  type: 'MULTIPLE_CHOICE' | 'TRUE_FALSE' | 'SHORT_ANSWER';
+  options?: string[];
+  correctAnswer: string | string[];
+  explanation: string;
+}
+
+export class TrainingModuleManager {
+  private modules: Map<string, TrainingModule> = new Map();
+  
+  constructor() {
+    this.initializeModules();
+  }
+  
+  private initializeModules(): void {
+    // Semantic Fracture Basics
+    this.modules.set('semantic-fractures-101', {
+      moduleId: 'semantic-fractures-101',
+      title: 'Understanding Semantic Fractures',
+      description: 'Learn what semantic fractures are and why they matter for patient safety',
+      targetRoles: ['NURSE', 'DOCTOR', 'CHARGE_NURSE'],
+      type: 'VIDEO',
+      duration: 15,
+      content: {
+        videoUrl: '/training/videos/semantic-fractures-101.mp4'
+      },
+      assessmentRequired: true,
+      passingScore: 80
+    });
+    
+    // Entropy Score Interpretation
+    this.modules.set('entropy-scores', {
+      moduleId: 'entropy-scores',
+      title: 'Interpreting Entropy Scores',
+      description: 'Understand how entropy scores are calculated and what they mean',
+      targetRoles: ['NURSE', 'DOCTOR', 'PATIENT_SAFETY_OFFICER'],
+      type: 'INTERACTIVE',
+      duration: 10,
+      content: {
+        interactiveTutorialId: 'entropy-score-tutorial'
+      },
+      assessmentRequired: true,
+      passingScore: 75
+    });
+    
+    // Countermeasure Implementation
+    this.modules.set('countermeasures', {
+      moduleId: 'countermeasures',
+      title: 'Implementing Countermeasures',
+      description: 'Learn how to effectively implement countermeasures to prevent semantic fractures',
+      targetRoles: ['NURSE', 'DOCTOR'],
+      type: 'VIDEO',
+      duration: 20,
+      content: {
+        videoUrl: '/training/videos/countermeasures.mp4',
+        quizQuestions: [
+          {
+            questionId: 'q1',
+            question: 'What is the first step when implementing a countermeasure?',
+            type: 'MULTIPLE_CHOICE',
+            options: [
+              'Acknowledge the alert',
+              'Read the evidence',
+              'Contact the patient',
+              'Update the EHR'
+            ],
+            correctAnswer: 'Read the evidence',
+            explanation: 'Always review the evidence first to understand the context of the fracture'
+          },
+          {
+            questionId: 'q2',
+            question: 'Countermeasures should be implemented even if you disagree with the alert.',
+            type: 'TRUE_FALSE',
+            correctAnswer: 'false',
+            explanation: 'Use clinical judgment. If you disagree, provide feedback to help improve the system.'
+          }
+        ]
+      },
+      assessmentRequired: true,
+      passingScore: 80
+    });
+  }
+  
+  async assignModule(userId: string, moduleId: string, assignedBy: string): Promise<void> {
+    const module = this.modules.get(moduleId);
+    
+    if (!module) {
+      throw new Error(`Module not found: ${moduleId}`);
+    }
+    
+    await dynamodb.putItem({
+      TableName: 'TrainingAssignments',
+      Item: {
+        assignmentId: generateId(),
+        userId,
+        moduleId,
+        assignedBy,
+        assignedAt: new Date(),
+        dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+        status: 'ASSIGNED'
+      }
+    }).promise();
+    
+    // Send notification
+    await this.notifyUserOfAssignment(userId, module);
+  }
+  
+  async recordModuleCompletion(
+    userId: string,
+    moduleId: string,
+    assessmentScore?: number
+  ): Promise<void> {
+    const module = this.modules.get(moduleId);
+    
+    // Check if assessment is required and passed
+    if (module.assessmentRequired && assessmentScore < module.passingScore) {
+      throw new Error(`Assessment score ${assessmentScore}% is below passing score ${module.passingScore}%`);
+    }
+    
+    await dynamodb.putItem({
+      TableName: 'TrainingCompletions',
+      Item: {
+        completionId: generateId(),
+        userId,
+        moduleId,
+        completedAt: new Date(),
+        assessmentScore,
+        passed: !module.assessmentRequired || assessmentScore >= module.passingScore
+      }
+    }).promise();
+  }
+}
+```
+
+#### Progress Tracking Implementation
+
+**Progress Tracker**:
+```typescript
+// src/services/training/progress-tracker.ts
+export interface UserTrainingProgress {
+  userId: string;
+  totalModulesAssigned: number;
+  modulesCompleted: number;
+  modulesInProgress: number;
+  modulesPending: number;
+  completionPercentage: number;
+  lastActivityAt: Date;
+  certifications: Certification[];
+}
+
+export interface Certification {
+  certificationId: string;
+  name: string;
+  earnedAt: Date;
+  expiresAt?: Date;
+  requiredModules: string[];
+}
+
+export class TrainingProgressTracker {
+  async getProgress(userId: string): Promise<UserTrainingProgress> {
+    // Get all assignments
+    const assignments = await this.getAssignments(userId);
+    
+    // Get all completions
+    const completions = await this.getCompletions(userId);
+    
+    // Calculate progress
+    const completedModuleIds = new Set(completions.map(c => c.moduleId));
+    const inProgressModuleIds = new Set<string>();
+    
+    // Check for in-progress modules (started but not completed)
+    for (const assignment of assignments) {
+      if (!completedModuleIds.has(assignment.moduleId)) {
+        const session = await this.getActiveSession(userId, assignment.moduleId);
+        if (session) {
+          inProgressModuleIds.add(assignment.moduleId);
+        }
+      }
+    }
+    
+    const totalAssigned = assignments.length;
+    const completed = completedModuleIds.size;
+    const inProgress = inProgressModuleIds.size;
+    const pending = totalAssigned - completed - inProgress;
+    
+    // Check for certifications
+    const certifications = await this.checkCertifications(userId, completions);
+    
+    return {
+      userId,
+      totalModulesAssigned: totalAssigned,
+      modulesCompleted: completed,
+      modulesInProgress: inProgress,
+      modulesPending: pending,
+      completionPercentage: totalAssigned > 0 ? (completed / totalAssigned) * 100 : 0,
+      lastActivityAt: this.getLastActivityDate(completions),
+      certifications
+    };
+  }
+  
+  async generateProgressReport(
+    hospitalId: string,
+    startDate: Date,
+    endDate: Date
+  ): Promise<HospitalTrainingReport> {
+    const users = await this.getHospitalUsers(hospitalId);
+    
+    const userProgress = await Promise.all(
+      users.map(user => this.getProgress(user.userId))
+    );
+    
+    return {
+      hospitalId,
+      reportPeriod: { start: startDate, end: endDate },
+      totalUsers: users.length,
+      usersWithCompletedTraining: userProgress.filter(p => p.completionPercentage === 100).length,
+      averageCompletionPercentage: this.calculateAverage(userProgress.map(p => p.completionPercentage)),
+      moduleCompletionRates: await this.getModuleCompletionRates(hospitalId),
+      certificationCounts: this.countCertifications(userProgress),
+      generatedAt: new Date()
+    };
+  }
+}
+```
+
+#### Contextual Help System
+
+**Contextual Help Manager**:
+```typescript
+// src/services/training/contextual-help.ts
+export interface ContextualHelp {
+  helpId: string;
+  featureId: string;
+  title: string;
+  content: string;
+  videoUrl?: string;
+  relatedArticles?: string[];
+  showOnFirstUse: boolean;
+}
+
+export class ContextualHelpManager {
+  private helpContent: Map<string, ContextualHelp> = new Map();
+  
+  constructor() {
+    this.initializeHelpContent();
+  }
+  
+  private initializeHelpContent(): void {
+    this.helpContent.set('fracture-acknowledge', {
+      helpId: 'fracture-acknowledge',
+      featureId: 'acknowledge-button',
+      title: 'Acknowledging Fractures',
+      content: 'Acknowledging a fracture confirms you have reviewed it and stops escalation. This does not resolve the fracture - you still need to implement the countermeasures.',
+      videoUrl: '/help/videos/acknowledge.mp4',
+      relatedArticles: ['countermeasures', 'escalation-policy'],
+      showOnFirstUse: true
+    });
+    
+    this.helpContent.set('entropy-score', {
+      helpId: 'entropy-score',
+      featureId: 'entropy-score-badge',
+      title: 'Understanding Entropy Scores',
+      content: 'Entropy scores range from 0.0 to 1.0 and represent the risk of a semantic fracture causing harm. Scores above 0.7 are considered high-risk and require immediate attention.',
+      relatedArticles: ['entropy-calculation', 'risk-thresholds'],
+      showOnFirstUse: true
+    });
+  }
+  
+  async getHelp(featureId: string, userId: string): Promise<ContextualHelp | null> {
+    const help = this.helpContent.get(featureId);
+    
+    if (!help) {
+      return null;
+    }
+    
+    // Check if user has seen this help before
+    const hasSeenBefore = await this.hasUserSeenHelp(userId, help.helpId);
+    
+    if (!hasSeenBefore && help.showOnFirstUse) {
+      // Record that user has seen this help
+      await this.recordHelpView(userId, help.helpId);
+      return help;
+    }
+    
+    return hasSeenBefore ? null : help;
+  }
+  
+  async searchHelp(query: string): Promise<ContextualHelp[]> {
+    const results: ContextualHelp[] = [];
+    
+    for (const help of this.helpContent.values()) {
+      if (
+        help.title.toLowerCase().includes(query.toLowerCase()) ||
+        help.content.toLowerCase().includes(query.toLowerCase())
+      ) {
+        results.push(help);
+      }
+    }
+    
+    return results;
+  }
+}
+```
+
+
+### Agent Prompt Management - Requirement 39
+
+#### Prompt Versioning and A/B Testing Framework
+
+**Prompt Version Manager**:
+```typescript
+// src/services/agents/prompt-version-manager.ts
+export interface PromptTemplate {
+  templateId: string;
+  agentType: AgentType;
+  version: string;
+  systemPrompt: string;
+  userPromptTemplate: string;
+  temperature: number;
+  maxTokens: number;
+  createdAt: Date;
+  createdBy: string;
+  status: 'DRAFT' | 'TESTING' | 'ACTIVE' | 'DEPRECATED';
+  performanceMetrics?: PromptPerformanceMetrics;
+}
+
+export interface PromptPerformanceMetrics {
+  totalInvocations: number;
+  avgTokenUsage: number;
+  avgLatency: number;
+  evidenceVerificationPassRate: number;
+  feedbackScore: number; // Average from user feedback
+  falsePositiveRate: number;
+}
+
+export class PromptVersionManager {
+  async createVersion(
+    agentType: AgentType,
+    systemPrompt: string,
+    userPromptTemplate: string,
+    userId: string
+  ): Promise<PromptTemplate> {
+    // Get current version number
+    const currentVersion = await this.getCurrentVersion(agentType);
+    const newVersionNumber = currentVersion ? this.incrementVersion(currentVersion.version) : '1.0.0';
+    
+    const template: PromptTemplate = {
+      templateId: generateId(),
+      agentType,
+      version: newVersionNumber,
+      systemPrompt,
+      userPromptTemplate,
+      temperature: 0.7,
+      maxTokens: 4000,
+      createdAt: new Date(),
+      createdBy: userId,
+      status: 'DRAFT'
+    };
+    
+    await dynamodb.putItem({
+      TableName: 'AgentPromptTemplates',
+      Item: template
+    }).promise();
+    
+    return template;
+  }
+  
+  async testAgainstHistoricalCases(
+    templateId: string,
+    testCaseIds: string[]
+  ): Promise<TestResults> {
+    const template = await this.getTemplate(templateId);
+    const results: TestResult[] = [];
+    
+    for (const caseId of testCaseIds) {
+      const testCase = await this.getHistoricalCase(caseId);
+      
+      // Run agent with new prompt
+      const output = await this.runAgentWithPrompt(template, testCase.input);
+      
+      // Compare with expected output
+      const comparison = this.compareOutputs(output, testCase.expectedOutput);
+      
+      results.push({
+        caseId,
+        passed: comparison.score >= 0.8,
+        score: comparison.score,
+        differences: comparison.differences,
+        tokenUsage: output.tokenUsage,
+        latency: output.latency
+      });
+    }
+    
+    return {
+      templateId,
+      totalCases: testCaseIds.length,
+      passed: results.filter(r => r.passed).length,
+      failed: results.filter(r => !r.passed).length,
+      avgScore: this.calculateAverage(results.map(r => r.score)),
+      avgTokenUsage: this.calculateAverage(results.map(r => r.tokenUsage)),
+      avgLatency: this.calculateAverage(results.map(r => r.latency)),
+      results
+    };
+  }
+  
+  async startABTest(
+    controlTemplateId: string,
+    experimentTemplateId: string,
+    trafficPercentage: number
+  ): Promise<ABTest> {
+    const abTest: ABTest = {
+      testId: generateId(),
+      controlTemplateId,
+      experimentTemplateId,
+      trafficPercentage,
+      startedAt: new Date(),
+      status: 'RUNNING',
+      metrics: {
+        control: this.initializeMetrics(),
+        experiment: this.initializeMetrics()
+      }
+    };
+    
+    await dynamodb.putItem({
+      TableName: 'ABTests',
+      Item: abTest
+    }).promise();
+    
+    return abTest;
+  }
+  
+  async analyzeABTest(testId: string): Promise<ABTestAnalysis> {
+    const test = await this.getABTest(testId);
+    
+    // Calculate statistical significance
+    const significance = this.calculateStatisticalSignificance(
+      test.metrics.control,
+      test.metrics.experiment
+    );
+    
+    // Determine winner
+    const winner = this.determineWinner(test.metrics.control, test.metrics.experiment);
+    
+    return {
+      testId,
+      duration: Date.now() - test.startedAt.getTime(),
+      controlMetrics: test.metrics.control,
+      experimentMetrics: test.metrics.experiment,
+      statisticalSignificance: significance,
+      winner,
+      recommendation: this.generateRecommendation(winner, significance)
+    };
+  }
+  
+  async promoteToProduction(templateId: string, userId: string): Promise<void> {
+    const template = await this.getTemplate(templateId);
+    
+    // Deactivate current active template
+    const currentActive = await this.getActiveTemplate(template.agentType);
+    if (currentActive) {
+      await this.updateTemplateStatus(currentActive.templateId, 'DEPRECATED');
+    }
+    
+    // Activate new template
+    await this.updateTemplateStatus(templateId, 'ACTIVE');
+    
+    // Log promotion event
+    await this.logPromptEvent({
+      eventType: 'PROMOTION',
+      templateId,
+      agentType: template.agentType,
+      userId,
+      timestamp: new Date()
+    });
+  }
+  
+  async rollback(agentType: AgentType, userId: string): Promise<void> {
+    // Get current active template
+    const currentActive = await this.getActiveTemplate(agentType);
+    
+    // Get previous active template
+    const previousActive = await this.getPreviousActiveTemplate(agentType);
+    
+    if (!previousActive) {
+      throw new Error('No previous version to rollback to');
+    }
+    
+    // Deactivate current
+    await this.updateTemplateStatus(currentActive.templateId, 'DEPRECATED');
+    
+    // Reactivate previous
+    await this.updateTemplateStatus(previousActive.templateId, 'ACTIVE');
+    
+    // Log rollback event
+    await this.logPromptEvent({
+      eventType: 'ROLLBACK',
+      templateId: previousActive.templateId,
+      agentType,
+      userId,
+      fromTemplateId: currentActive.templateId,
+      timestamp: new Date()
+    });
+  }
+}
+```
+
+#### Testing Against Historical Cases
+
+**Historical Case Manager**:
+```typescript
+// src/services/agents/historical-case-manager.ts
+export interface HistoricalCase {
+  caseId: string;
+  patientId: string;
+  hospitalId: string;
+  clinicalMoment: ClinicalMoment;
+  input: {
+    patientTimeline: PatientTimeline;
+    patientState: PatientState;
+  };
+  expectedOutput: {
+    fractures: SemanticFracture[];
+    countermeasures: Countermeasure[];
+  };
+  actualOutput?: {
+    fractures: SemanticFracture[];
+    countermeasures: Countermeasure[];
+  };
+  feedback?: FeedbackSubmission;
+  createdAt: Date;
+}
+
+export class HistoricalCaseManager {
+  async createTestCase(
+    sessionId: string,
+    feedback: FeedbackSubmission
+  ): Promise<HistoricalCase> {
+    // Get original analysis session
+    const session = await this.getAnalysisSession(sessionId);
+    
+    // Create test case
+    const testCase: HistoricalCase = {
+      caseId: generateId(),
+      patientId: session.patientId,
+      hospitalId: session.hospitalId,
+      clinicalMoment: session.clinicalMoment,
+      input: {
+        patientTimeline: session.patientTimeline,
+        patientState: session.patientState
+      },
+      expectedOutput: this.deriveExpectedOutput(session, feedback),
+      actualOutput: {
+        fractures: session.fractures,
+        countermeasures: session.countermeasures
+      },
+      feedback,
+      createdAt: new Date()
+    };
+    
+    await dynamodb.putItem({
+      TableName: 'HistoricalTestCases',
+      Item: testCase
+    }).promise();
+    
+    return testCase;
+  }
+  
+  private deriveExpectedOutput(
+    session: AnalysisSession,
+    feedback: FeedbackSubmission
+  ): { fractures: SemanticFracture[]; countermeasures: Countermeasure[] } {
+    // Adjust expected output based on feedback
+    if (feedback.label === 'FALSE_POSITIVE') {
+      // Remove the fracture that was marked as false positive
+      return {
+        fractures: session.fractures.filter(f => f.fractureId !== feedback.fractureId),
+        countermeasures: session.countermeasures.filter(c => c.fractureId !== feedback.fractureId)
+      };
+    } else if (feedback.label === 'MISSED_RISK_REPORTED') {
+      // Add the missed fracture (if provided in feedback)
+      const missedFracture = this.extractMissedFractureFromFeedback(feedback);
+      return {
+        fractures: [...session.fractures, missedFracture],
+        countermeasures: session.countermeasures
+      };
+    } else {
+      // TRUE_POSITIVE or HELPFUL_BUT_NOT_RISK - keep as is
+      return {
+        fractures: session.fractures,
+        countermeasures: session.countermeasures
+      };
+    }
+  }
+  
+  async getCuratedTestSuite(agentType: AgentType): Promise<HistoricalCase[]> {
+    // Get diverse set of test cases
+    const testCases = await dynamodb.query({
+      TableName: 'HistoricalTestCases',
+      IndexName: 'agentType-feedback-index',
+      KeyConditionExpression: 'agentType = :agentType',
+      ExpressionAttributeValues: {
+        ':agentType': agentType
+      }
+    }).promise();
+    
+    // Ensure diversity
+    return this.selectDiverseTestCases(testCases.Items as HistoricalCase[], 50);
+  }
+  
+  private selectDiverseTestCases(cases: HistoricalCase[], count: number): HistoricalCase[] {
+    // Stratified sampling to ensure diversity
+    const byFractureType = this.groupBy(cases, c => c.expectedOutput.fractures[0]?.fractureType);
+    const byFeedbackLabel = this.groupBy(cases, c => c.feedback?.label);
+    
+    const selected: HistoricalCase[] = [];
+    
+    // Select proportionally from each group
+    for (const [fractureType, typeCases] of Object.entries(byFractureType)) {
+      const proportion = typeCases.length / cases.length;
+      const toSelect = Math.ceil(count * proportion);
+      selected.push(...this.randomSample(typeCases, toSelect));
+    }
+    
+    return selected.slice(0, count);
+  }
+}
+```
+
+#### Performance Metrics Tracking
+
+**Prompt Performance Tracker**:
+```typescript
+// src/services/agents/performance-tracker.ts
+export class PromptPerformanceTracker {
+  async recordInvocation(
+    templateId: string,
+    invocation: AgentInvocation
+  ): Promise<void> {
+    await dynamodb.updateItem({
+      TableName: 'AgentPromptTemplates',
+      Key: { templateId },
+      UpdateExpression: `
+        SET performanceMetrics.totalInvocations = performanceMetrics.totalInvocations + :one,
+            performanceMetrics.avgTokenUsage = :avgTokenUsage,
+            performanceMetrics.avgLatency = :avgLatency
+      `,
+      ExpressionAttributeValues: {
+        ':one': 1,
+        ':avgTokenUsage': invocation.tokenUsage,
+        ':avgLatency': invocation.latency
+      }
+    }).promise();
+  }
+  
+  async updateFeedbackMetrics(
+    templateId: string,
+    feedback: FeedbackSubmission
+  ): Promise<void> {
+    // Get current metrics
+    const template = await this.getTemplate(templateId);
+    const metrics = template.performanceMetrics;
+    
+    // Update feedback score
+    const newFeedbackScore = this.calculateNewFeedbackScore(
+      metrics.feedbackScore,
+      feedback.label,
+      metrics.totalInvocations
+    );
+    
+    // Update false positive rate
+    const newFPR = this.calculateNewFPR(
+      metrics.falsePositiveRate,
+      feedback.label === 'FALSE_POSITIVE',
+      metrics.totalInvocations
+    );
+    
+    await dynamodb.updateItem({
+      TableName: 'AgentPromptTemplates',
+      Key: { templateId },
+      UpdateExpression: `
+        SET performanceMetrics.feedbackScore = :feedbackScore,
+            performanceMetrics.falsePositiveRate = :fpr
+      `,
+      ExpressionAttributeValues: {
+        ':feedbackScore': newFeedbackScore,
+        ':fpr': newFPR
+      }
+    }).promise();
+  }
+  
+  async generatePerformanceReport(
+    agentType: AgentType,
+    startDate: Date,
+    endDate: Date
+  ): Promise<PerformanceReport> {
+    const templates = await this.getTemplatesForPeriod(agentType, startDate, endDate);
+    
+    return {
+      agentType,
+      reportPeriod: { start: startDate, end: endDate },
+      templates: templates.map(t => ({
+        templateId: t.templateId,
+        version: t.version,
+        status: t.status,
+        metrics: t.performanceMetrics
+      })),
+      bestPerforming: this.identifyBestPerforming(templates),
+      recommendations: this.generateRecommendations(templates)
+    };
+  }
+}
+```
+
+#### Rollback Procedures
+
+**Rollback Manager**:
+```typescript
+// src/services/agents/rollback-manager.ts
+export class PromptRollbackManager {
+  async initiateRollback(
+    agentType: AgentType,
+    reason: string,
+    userId: string
+  ): Promise<RollbackResult> {
+    // Get current active template
+    const currentTemplate = await this.getActiveTemplate(agentType);
+    
+    // Get previous stable template
+    const previousTemplate = await this.getPreviousStableTemplate(agentType);
+    
+    if (!previousTemplate) {
+      return {
+        success: false,
+        error: 'No previous stable version available for rollback'
+      };
+    }
+    
+    // Create rollback record
+    const rollback: RollbackRecord = {
+      rollbackId: generateId(),
+      agentType,
+      fromTemplateId: currentTemplate.templateId,
+      toTemplateId: previousTemplate.templateId,
+      reason,
+      initiatedBy: userId,
+      initiatedAt: new Date(),
+      status: 'IN_PROGRESS'
+    };
+    
+    await this.saveRollbackRecord(rollback);
+    
+    try {
+      // Deactivate current template
+      await this.updateTemplateStatus(currentTemplate.templateId, 'DEPRECATED');
+      
+      // Reactivate previous template
+      await this.updateTemplateStatus(previousTemplate.templateId, 'ACTIVE');
+      
+      // Invalidate agent cache
+      await this.invalidateAgentCache(agentType);
+      
+      // Update rollback status
+      rollback.status = 'COMPLETED';
+      rollback.completedAt = new Date();
+      await this.saveRollbackRecord(rollback);
+      
+      // Notify team
+      await this.notifyRollback(rollback);
+      
+      return {
+        success: true,
+        rollbackId: rollback.rollbackId,
+        previousVersion: previousTemplate.version,
+        currentVersion: currentTemplate.version
+      };
+    } catch (error) {
+      rollback.status = 'FAILED';
+      rollback.error = error.message;
+      await this.saveRollbackRecord(rollback);
+      
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+  
+  async monitorPostRollback(rollbackId: string, durationMinutes: number): Promise<void> {
+    const rollback = await this.getRollbackRecord(rollbackId);
+    const template = await this.getTemplate(rollback.toTemplateId);
+    
+    // Monitor metrics for specified duration
+    const startTime = Date.now();
+    const endTime = startTime + (durationMinutes * 60 * 1000);
+    
+    while (Date.now() < endTime) {
+      await this.sleep(60 * 1000); // Check every minute
+      
+      const metrics = await this.getCurrentMetrics(template.agentType);
+      
+      // Check if metrics are healthy
+      if (!this.areMetricsHealthy(metrics)) {
+        await this.alertOps({
+          severity: 'CRITICAL',
+          message: `Metrics unhealthy after rollback for ${template.agentType}`,
+          rollbackId
+        });
+      }
+    }
+  }
+}
+```
+
+
+### Integration Testing and Validation - Requirement 40
+
+#### Test Mode Implementation Details
+
+**Test Mode Manager**:
+```typescript
+// src/services/testing/test-mode-manager.ts
+export class TestModeManager {
+  async enableTestMode(hospitalId: string, userId: string): Promise<TestModeSession> {
+    const session: TestModeSession = {
+      sessionId: generateId(),
+      hospitalId,
+      enabledBy: userId,
+      enabledAt: new Date(),
+      status: 'ACTIVE',
+      isolationLevel: 'FULL' // No production data affected
+    };
+    
+    await dynamodb.putItem({
+      TableName: 'TestModeSessions',
+      Item: session
+    }).promise();
+    
+    // Create isolated test environment
+    await this.createTestEnvironment(session);
+    
+    return session;
+  }
+  
+  private async createTestEnvironment(session: TestModeSession): Promise<void> {
+    // Create test-specific DynamoDB tables with session prefix
+    await this.createTestTables(session.sessionId);
+    
+    // Create test-specific S3 bucket prefix
+    await this.createTestBucketPrefix(session.sessionId);
+    
+    // Configure test-specific endpoints
+    await this.configureTestEndpoints(session.sessionId);
+  }
+  
+  async processTestMessage(
+    sessionId: string,
+    message: HL7Message | FHIRResource
+  ): Promise<TestMessageResult> {
+    const session = await this.getTestSession(sessionId);
+    
+    if (session.status !== 'ACTIVE') {
+      throw new Error('Test session is not active');
+    }
+    
+    // Process message in isolated environment
+    const result = await this.processInTestEnvironment(session, message);
+    
+    // Generate validation report
+    const validation = await this.validateProcessing(message, result);
+    
+    return {
+      messageId: generateId(),
+      sessionId,
+      messageType: this.getMessageType(message),
+      processedAt: new Date(),
+      result,
+      validation
+    };
+  }
+}
+```
+
+
+#### Synthetic Data Generation
+
+**Synthetic Data Generator**:
+```typescript
+// src/services/testing/synthetic-data-generator.ts
+export class SyntheticDataGenerator {
+  async generateHL7Message(messageType: string): Promise<string> {
+    switch (messageType) {
+      case 'ADT^A01': // Admission
+        return this.generateADT_A01();
+      case 'ADT^A03': // Discharge
+        return this.generateADT_A03();
+      case 'ORM^O01': // Medication Order
+        return this.generateORM_O01();
+      case 'ORU^R01': // Lab Result
+        return this.generateORU_R01();
+      default:
+        throw new Error(`Unsupported message type: ${messageType}`);
+    }
+  }
+  
+  private generateADT_A01(): string {
+    const mrn = this.generateMRN();
+    const timestamp = this.formatHL7Timestamp(new Date());
+    
+    return `MSH|^~\\&|TEST_EHR|TEST_HOSPITAL|MEDWAR|MEDWAR|${timestamp}||ADT^A01|${this.generateMessageId()}|P|2.5
+EVN|A01|${timestamp}
+PID|1||${mrn}||TEST^PATIENT^A||19800101|M|||123 TEST ST^^MUMBAI^MH^400001^IN|||||||
+PV1|1|I|ICU^101^01^TEST_HOSPITAL||||DOC123^TEST^DOCTOR^A|||MED||||||||V12345|||||||||||||||||||||||||${timestamp}`;
+  }
+  
+  async generateFHIRResource(resourceType: string): Promise<any> {
+    switch (resourceType) {
+      case 'Patient':
+        return this.generatePatientResource();
+      case 'Observation':
+        return this.generateObservationResource();
+      case 'MedicationRequest':
+        return this.generateMedicationRequestResource();
+      default:
+        throw new Error(`Unsupported resource type: ${resourceType}`);
+    }
+  }
+  
+  private generatePatientResource(): any {
+    return {
+      resourceType: 'Patient',
+      id: this.generateId(),
+      identifier: [
+        {
+          system: 'http://test-hospital.org/mrn',
+          value: this.generateMRN()
+        }
+      ],
+      name: [
+        {
+          use: 'official',
+          family: 'TestPatient',
+          given: ['Test', 'A']
+        }
+      ],
+      gender: 'male',
+      birthDate: '1980-01-01',
+      address: [
+        {
+          line: ['123 Test Street'],
+          city: 'Mumbai',
+          state: 'MH',
+          postalCode: '400001',
+          country: 'IN'
+        }
+      ]
+    };
+  }
+}
+```
+
+
+#### Validation Report Structure
+
+**Validation Report Generator**:
+```typescript
+// src/services/testing/validation-report.ts
+export interface ValidationReport {
+  reportId: string;
+  sessionId: string;
+  generatedAt: Date;
+  messagesTested: number;
+  validationResults: ValidationResult[];
+  summary: ValidationSummary;
+}
+
+export interface ValidationResult {
+  messageId: string;
+  messageType: string;
+  validationChecks: ValidationCheck[];
+  overallStatus: 'PASS' | 'FAIL' | 'WARNING';
+}
+
+export interface ValidationCheck {
+  checkName: string;
+  status: 'PASS' | 'FAIL' | 'WARNING';
+  details: string;
+  expectedValue?: any;
+  actualValue?: any;
+}
+
+export class ValidationReportGenerator {
+  async generateReport(sessionId: string): Promise<ValidationReport> {
+    const session = await this.getTestSession(sessionId);
+    const results = await this.getValidationResults(sessionId);
+    
+    return {
+      reportId: generateId(),
+      sessionId,
+      generatedAt: new Date(),
+      messagesTested: results.length,
+      validationResults: results,
+      summary: this.generateSummary(results)
+    };
+  }
+  
+  private generateSummary(results: ValidationResult[]): ValidationSummary {
+    return {
+      totalMessages: results.length,
+      passed: results.filter(r => r.overallStatus === 'PASS').length,
+      failed: results.filter(r => r.overallStatus === 'FAIL').length,
+      warnings: results.filter(r => r.overallStatus === 'WARNING').length,
+      passRate: (results.filter(r => r.overallStatus === 'PASS').length / results.length) * 100,
+      commonIssues: this.identifyCommonIssues(results)
+    };
+  }
+}
+```
+
+
+#### Sample Message Library
+
+**Sample Message Library**:
+```typescript
+// src/services/testing/sample-library.ts
+export class SampleMessageLibrary {
+  private samples: Map<string, SampleMessage> = new Map();
+  
+  constructor() {
+    this.initializeSamples();
+  }
+  
+  private initializeSamples(): void {
+    // HL7 ADT^A01 - Normal Admission
+    this.samples.set('hl7-adt-a01-normal', {
+      id: 'hl7-adt-a01-normal',
+      type: 'HL7',
+      messageType: 'ADT^A01',
+      description: 'Normal patient admission with complete demographics',
+      content: `MSH|^~\\&|EPIC|HOSPITAL|MEDWAR|MEDWAR|20240212120000||ADT^A01|MSG001|P|2.5
+EVN|A01|20240212120000
+PID|1||MRN123456||DOE^JOHN^A||19800101|M|||123 MAIN ST^^MUMBAI^MH^400001^IN|||||||
+PV1|1|I|ICU^101^01^HOSPITAL||||DOC123^SMITH^JANE^A|||MED||||||||V12345|||||||||||||||||||||||||20240212120000`,
+      expectedOutcome: 'Patient timeline created with admission event'
+    });
+    
+    // HL7 ORM^O01 - Medication Order with Allergy Conflict
+    this.samples.set('hl7-orm-o01-allergy-conflict', {
+      id: 'hl7-orm-o01-allergy-conflict',
+      type: 'HL7',
+      messageType: 'ORM^O01',
+      description: 'Medication order that conflicts with patient allergy',
+      content: `MSH|^~\\&|EPIC|HOSPITAL|MEDWAR|MEDWAR|20240212130000||ORM^O01|MSG002|P|2.5
+PID|1||MRN123456||DOE^JOHN^A||19800101|M
+AL1|1|DA|PENICILLIN^Penicillin|SV|Anaphylaxis
+ORC|NW|ORD123|||||||20240212130000
+RXO|AMOXICILLIN 500MG^Amoxicillin 500mg|500||MG|||||||`,
+      expectedOutcome: 'Contraindication fracture detected'
+    });
+    
+    // FHIR Patient Resource
+    this.samples.set('fhir-patient-complete', {
+      id: 'fhir-patient-complete',
+      type: 'FHIR',
+      resourceType: 'Patient',
+      description: 'Complete patient resource with all demographics',
+      content: JSON.stringify({
+        resourceType: 'Patient',
+        id: 'patient-001',
+        identifier: [{ system: 'http://hospital.org/mrn', value: 'MRN123456' }],
+        name: [{ use: 'official', family: 'Doe', given: ['John', 'A'] }],
+        gender: 'male',
+        birthDate: '1980-01-01',
+        address: [{
+          line: ['123 Main Street'],
+          city: 'Mumbai',
+          state: 'MH',
+          postalCode: '400001',
+          country: 'IN'
+        }]
+      }),
+      expectedOutcome: 'Patient demographics updated in timeline'
+    });
+  }
+  
+  getSample(sampleId: string): SampleMessage | undefined {
+    return this.samples.get(sampleId);
+  }
+  
+  getSamplesByType(type: 'HL7' | 'FHIR'): SampleMessage[] {
+    return Array.from(this.samples.values()).filter(s => s.type === type);
+  }
+}
+```
+
+
+### Minimum Required Data Inputs - Requirement 41
+
+#### Minimum Viable Data Contract Specification
+
+**Data Contract Validator**:
+```typescript
+// src/services/integration/data-contract-validator.ts
+export interface MinimumDataContract {
+  admission: {
+    required: string[];
+    optional: string[];
+  };
+  discharge: {
+    required: string[];
+    optional: string[];
+  };
+  medicationOrder: {
+    required: string[];
+    optional: string[];
+  };
+  labResult: {
+    required: string[];
+    optional: string[];
+  };
+}
+
+export const minimumDataContract: MinimumDataContract = {
+  admission: {
+    required: [
+      'patientId',
+      'mrn',
+      'admissionDate',
+      'location',
+      'primaryDiagnosis'
+    ],
+    optional: [
+      'attendingPhysician',
+      'allergies',
+      'currentMedications',
+      'comorbidities'
+    ]
+  },
+  discharge: {
+    required: [
+      'patientId',
+      'dischargeDate',
+      'dischargeDiagnosis',
+      'dischargeDisposition'
+    ],
+    optional: [
+      'dischargeMedications',
+      'followUpInstructions',
+      'followUpAppointments'
+    ]
+  },
+  medicationOrder: {
+    required: [
+      'patientId',
+      'medicationName',
+      'dosage',
+      'route',
+      'frequency'
+    ],
+    optional: [
+      'indication',
+      'duration',
+      'prescribingPhysician'
+    ]
+  },
+  labResult: {
+    required: [
+      'patientId',
+      'testName',
+      'result',
+      'unit',
+      'resultDate'
+    ],
+    optional: [
+      'referenceRange',
+      'abnormalFlag',
+      'orderingPhysician'
+    ]
+  }
+};
+
+export class DataContractValidator {
+  validateAdmission(data: any): ValidationResult {
+    const missing = this.checkRequiredFields(
+      data,
+      minimumDataContract.admission.required
+    );
+    
+    if (missing.length > 0) {
+      return {
+        valid: false,
+        errors: missing.map(field => ({
+          field,
+          message: `Required field '${field}' is missing`,
+          severity: 'ERROR'
+        }))
+      };
+    }
+    
+    // Validate field formats
+    const formatErrors = this.validateFieldFormats(data, 'admission');
+    
+    return {
+      valid: formatErrors.length === 0,
+      errors: formatErrors,
+      warnings: this.checkOptionalFields(data, minimumDataContract.admission.optional)
+    };
+  }
+  
+  private checkRequiredFields(data: any, requiredFields: string[]): string[] {
+    const missing: string[] = [];
+    
+    for (const field of requiredFields) {
+      if (!this.hasValue(data, field)) {
+        missing.push(field);
+      }
+    }
+    
+    return missing;
+  }
+  
+  private hasValue(data: any, field: string): boolean {
+    const value = this.getNestedValue(data, field);
+    return value !== undefined && value !== null && value !== '';
+  }
+}
+```
+
+
+#### Required vs Optional Data Fields
+
+**Field Classification**:
+```typescript
+// src/services/integration/field-classification.ts
+export interface FieldClassification {
+  fieldName: string;
+  required: boolean;
+  dataType: 'string' | 'number' | 'date' | 'boolean' | 'array' | 'object';
+  format?: string;
+  validation?: ValidationRule;
+  impactOnAnalysis: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
+  fallbackStrategy?: FallbackStrategy;
+}
+
+export const fieldClassifications: Record<string, FieldClassification> = {
+  // Patient Demographics
+  'patientId': {
+    fieldName: 'patientId',
+    required: true,
+    dataType: 'string',
+    impactOnAnalysis: 'CRITICAL',
+    validation: { pattern: /^[A-Z0-9]{6,12}$/ }
+  },
+  'mrn': {
+    fieldName: 'mrn',
+    required: true,
+    dataType: 'string',
+    impactOnAnalysis: 'CRITICAL',
+    validation: { pattern: /^MRN[0-9]{6,10}$/ }
+  },
+  'dateOfBirth': {
+    fieldName: 'dateOfBirth',
+    required: false,
+    dataType: 'date',
+    format: 'YYYY-MM-DD',
+    impactOnAnalysis: 'MEDIUM',
+    fallbackStrategy: {
+      type: 'ESTIMATE',
+      method: 'Use age if available'
+    }
+  },
+  
+  // Clinical Data
+  'primaryDiagnosis': {
+    fieldName: 'primaryDiagnosis',
+    required: true,
+    dataType: 'string',
+    impactOnAnalysis: 'HIGH',
+    validation: { minLength: 3 }
+  },
+  'allergies': {
+    fieldName: 'allergies',
+    required: false,
+    dataType: 'array',
+    impactOnAnalysis: 'HIGH',
+    fallbackStrategy: {
+      type: 'ASSUME_NONE',
+      method: 'Assume no known allergies if not provided'
+    }
+  },
+  'currentMedications': {
+    fieldName: 'currentMedications',
+    required: false,
+    dataType: 'array',
+    impactOnAnalysis: 'HIGH',
+    fallbackStrategy: {
+      type: 'PARTIAL_ANALYSIS',
+      method: 'Analyze with available medication data only'
+    }
+  },
+  
+  // Medication Orders
+  'medicationName': {
+    fieldName: 'medicationName',
+    required: true,
+    dataType: 'string',
+    impactOnAnalysis: 'CRITICAL',
+    validation: { minLength: 2 }
+  },
+  'dosage': {
+    fieldName: 'dosage',
+    required: true,
+    dataType: 'string',
+    impactOnAnalysis: 'CRITICAL',
+    validation: { pattern: /^\d+(\.\d+)?\s*(mg|ml|g|mcg|units?)$/i }
+  },
+  'route': {
+    fieldName: 'route',
+    required: true,
+    dataType: 'string',
+    impactOnAnalysis: 'HIGH',
+    validation: {
+      enum: ['PO', 'IV', 'IM', 'SC', 'SL', 'PR', 'TOPICAL', 'INHALATION']
+    }
+  }
+};
+```
+
+
+#### Data Quality Thresholds
+
+**Quality Threshold Manager**:
+```typescript
+// src/services/integration/quality-thresholds.ts
+export interface DataQualityThresholds {
+  minimumCompleteness: number; // Percentage of required fields present
+  minimumAccuracy: number; // Percentage of fields passing validation
+  minimumTimeliness: number; // Maximum age of data in hours
+  minimumConsistency: number; // Percentage of cross-field validations passing
+}
+
+export const defaultQualityThresholds: DataQualityThresholds = {
+  minimumCompleteness: 80, // 80% of required fields must be present
+  minimumAccuracy: 95, // 95% of fields must pass validation
+  minimumTimeliness: 24, // Data must be less than 24 hours old
+  minimumConsistency: 90 // 90% of cross-field validations must pass
+};
+
+export class DataQualityAssessor {
+  async assessQuality(data: any, dataType: string): Promise<QualityAssessment> {
+    const completeness = this.assessCompleteness(data, dataType);
+    const accuracy = this.assessAccuracy(data, dataType);
+    const timeliness = this.assessTimeliness(data);
+    const consistency = this.assessConsistency(data, dataType);
+    
+    const overallScore = (
+      completeness.score * 0.3 +
+      accuracy.score * 0.3 +
+      timeliness.score * 0.2 +
+      consistency.score * 0.2
+    );
+    
+    return {
+      overallScore,
+      completeness,
+      accuracy,
+      timeliness,
+      consistency,
+      meetsThresholds: this.checkThresholds({
+        completeness: completeness.score,
+        accuracy: accuracy.score,
+        timeliness: timeliness.score,
+        consistency: consistency.score
+      }),
+      recommendations: this.generateRecommendations({
+        completeness,
+        accuracy,
+        timeliness,
+        consistency
+      })
+    };
+  }
+  
+  private assessCompleteness(data: any, dataType: string): CompletenessAssessment {
+    const contract = minimumDataContract[dataType];
+    const requiredFields = contract.required;
+    const presentFields = requiredFields.filter(field => this.hasValue(data, field));
+    
+    return {
+      score: (presentFields.length / requiredFields.length) * 100,
+      totalRequired: requiredFields.length,
+      present: presentFields.length,
+      missing: requiredFields.filter(field => !this.hasValue(data, field))
+    };
+  }
+  
+  private assessAccuracy(data: any, dataType: string): AccuracyAssessment {
+    const validations: ValidationResult[] = [];
+    
+    for (const [fieldName, classification] of Object.entries(fieldClassifications)) {
+      if (this.hasValue(data, fieldName) && classification.validation) {
+        const valid = this.validateField(data[fieldName], classification.validation);
+        validations.push({
+          fieldName,
+          valid,
+          value: data[fieldName]
+        });
+      }
+    }
+    
+    const validCount = validations.filter(v => v.valid).length;
+    
+    return {
+      score: validations.length > 0 ? (validCount / validations.length) * 100 : 100,
+      totalValidated: validations.length,
+      passed: validCount,
+      failed: validations.length - validCount,
+      failures: validations.filter(v => !v.valid)
+    };
+  }
+}
+```
+
+
+#### Graceful Degradation Strategies
+
+**Degradation Strategy Manager**:
+```typescript
+// src/services/integration/degradation-strategy.ts
+export interface DegradationStrategy {
+  strategyType: 'SKIP_ANALYSIS' | 'PARTIAL_ANALYSIS' | 'ESTIMATE_MISSING' | 'USE_DEFAULTS';
+  applicableWhen: (data: any, quality: QualityAssessment) => boolean;
+  apply: (data: any) => EnhancedData;
+  impactOnResults: string;
+}
+
+export class GracefulDegradationManager {
+  private strategies: DegradationStrategy[] = [
+    {
+      strategyType: 'ESTIMATE_MISSING',
+      applicableWhen: (data, quality) => {
+        return quality.completeness.score >= 60 && quality.completeness.score < 80;
+      },
+      apply: (data) => {
+        // Estimate missing non-critical fields
+        if (!data.dateOfBirth && data.age) {
+          data.dateOfBirth = this.estimateDOBFromAge(data.age);
+        }
+        
+        if (!data.allergies) {
+          data.allergies = [];
+          data._estimatedFields = [...(data._estimatedFields || []), 'allergies'];
+        }
+        
+        return data;
+      },
+      impactOnResults: 'Analysis proceeds with estimated values. Results flagged as partial.'
+    },
+    {
+      strategyType: 'PARTIAL_ANALYSIS',
+      applicableWhen: (data, quality) => {
+        return quality.completeness.score >= 40 && quality.completeness.score < 60;
+      },
+      apply: (data) => {
+        // Mark analysis as partial
+        data._analysisMode = 'PARTIAL';
+        data._limitedCapabilities = this.identifyLimitedCapabilities(data);
+        
+        return data;
+      },
+      impactOnResults: 'Limited analysis performed. Some fracture types cannot be detected.'
+    },
+    {
+      strategyType: 'SKIP_ANALYSIS',
+      applicableWhen: (data, quality) => {
+        return quality.completeness.score < 40;
+      },
+      apply: (data) => {
+        data._analysisSkipped = true;
+        data._skipReason = 'Insufficient data quality';
+        
+        return data;
+      },
+      impactOnResults: 'Analysis skipped. Data quality too low for reliable results.'
+    }
+  ];
+  
+  async applyDegradation(
+    data: any,
+    quality: QualityAssessment
+  ): Promise<DegradationResult> {
+    // Find applicable strategy
+    const strategy = this.strategies.find(s => s.applicableWhen(data, quality));
+    
+    if (!strategy) {
+      // No degradation needed - quality is sufficient
+      return {
+        strategyApplied: null,
+        enhancedData: data,
+        impactOnResults: 'None - data quality sufficient for full analysis'
+      };
+    }
+    
+    // Apply strategy
+    const enhancedData = strategy.apply(data);
+    
+    // Log degradation event
+    await this.logDegradationEvent({
+      dataType: data.type,
+      patientId: data.patientId,
+      qualityScore: quality.overallScore,
+      strategyApplied: strategy.strategyType,
+      timestamp: new Date()
+    });
+    
+    return {
+      strategyApplied: strategy.strategyType,
+      enhancedData,
+      impactOnResults: strategy.impactOnResults
+    };
+  }
+  
+  private identifyLimitedCapabilities(data: any): string[] {
+    const limited: string[] = [];
+    
+    if (!data.allergies) {
+      limited.push('CONTRAINDICATION_DETECTION');
+    }
+    
+    if (!data.currentMedications) {
+      limited.push('MEDICATION_RECONCILIATION');
+    }
+    
+    if (!data.followUpInstructions) {
+      limited.push('FOLLOW_UP_COORDINATION');
+    }
+    
+    return limited;
+  }
+  
+  async generateDataQualityReport(
+    hospitalId: string,
+    startDate: Date,
+    endDate: Date
+  ): Promise<DataQualityReport> {
+    const assessments = await this.getQualityAssessments(hospitalId, startDate, endDate);
+    
+    return {
+      hospitalId,
+      reportPeriod: { start: startDate, end: endDate },
+      totalRecords: assessments.length,
+      averageQualityScore: this.calculateAverage(assessments.map(a => a.overallScore)),
+      qualityDistribution: this.calculateDistribution(assessments),
+      commonIssues: this.identifyCommonIssues(assessments),
+      degradationFrequency: this.calculateDegradationFrequency(assessments),
+      recommendations: this.generateImprovementRecommendations(assessments)
+    };
+  }
+}
+```
+
+
+## Appendix
